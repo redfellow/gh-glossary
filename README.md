@@ -253,5 +253,5 @@ cache/logs/                                host.log, plus one log and raw result
 - A pattern that is too broad underlines unrelated words. Regenerate the page it came from (the
   definition box says which), or edit the glossary JSON by hand.
 - Runs live in the host, which Chrome stops when it quits: a run going at that moment is lost.
-- Windows support is new: the host's Windows rules are covered by tests, but the install script and
-  runs have had far less use there than on macOS and Linux. Please open an issue if something fails.
+- Windows support is new. CI checks the install script, the host and the guard on Windows, but
+  real runs there have had far less use than on macOS and Linux. Please open an issue if one fails.
