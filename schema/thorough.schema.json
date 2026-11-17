@@ -1,0 +1,103 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "terms",
+    "corrections",
+    "capHit"
+  ],
+  "properties": {
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "term",
+          "category",
+          "layer",
+          "pattern",
+          "code",
+          "def",
+          "verified"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "term": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "reference",
+              "domain",
+              "code",
+              "external",
+              "library",
+              "acronym"
+            ]
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "repo",
+              "org"
+            ]
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "code": {
+            "type": "boolean"
+          },
+          "def": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "where": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "corrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "def": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "code": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "capHit": {
+      "type": "boolean"
+    }
+  }
+}

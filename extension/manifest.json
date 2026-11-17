@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "gh-glossary",
+  "version": "1.0.0",
+  "description": "Definitions for the terms on GitHub pages, written by Claude on your machine.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv8wXA3x0Wu8rZ07NfSNhHM2OQha+MDrZC0vF0ZYQ03HuRpOln4n7k+X2Vnq75AfUbhfrqwfO2g6pTw9T2stYNjVkMJl96wdemN6aA/yXHZdteReL7b0bmM72X7ViFO0Q9ENjuEUpWi+k8gWXT5NDyeQ7eS+HvhoqbN3DEd6x0Dd09DsPKbeuF9/J3syhyEMA/taE4SrU359zVQ3exhmLydtgdPV5KLjvZab/C6jhX7+55IkTjq7LzaJm6bHUB/zn/qKEwQmVRWkRKlCb4OS53y6XGtKE9iTblohDVD2fvPFa66R2Sr/5NToWO3YglYiSp3J3Ym7msSA/xtMsQ5IZHQIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": ["nativeMessaging", "storage"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    { "matches": ["https://github.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}

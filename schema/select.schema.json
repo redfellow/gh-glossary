@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "term"
+  ],
+  "properties": {
+    "term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "term",
+        "category",
+        "layer",
+        "pattern",
+        "code",
+        "def",
+        "verified"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "term": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "reference",
+            "domain",
+            "code",
+            "external",
+            "library",
+            "acronym"
+          ]
+        },
+        "layer": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "org"
+          ]
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "code": {
+          "type": "boolean"
+        },
+        "def": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "where": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
