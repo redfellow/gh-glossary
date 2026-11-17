@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gh-glossary definition</title>
+<style>
+  :root { --fg: #1f2328; --muted: #59636e; --bg: #ffffff; --panel: #f6f8fa; --border: #d1d9e0; --accent: #0969da; --org-bg: #fbefff; --org-fg: #8250df; color-scheme: light; }
+  :root.dark { --fg: #e6edf3; --muted: #8d96a0; --bg: #0d1117; --panel: #161b22; --border: #30363d; --accent: #4493f8; --org-bg: #2b1c3a; --org-fg: #bc8cff; color-scheme: dark; }
+  html, body { margin: 0; background: transparent; }
+  #box { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; box-sizing: border-box; overflow: hidden; }
+  #box.pinned { border-color: var(--accent); }
+  .ph { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; border-bottom: 1px solid var(--border); }
+  .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--accent); }
+  .layer { font: 600 10.5px/1 -apple-system, sans-serif; text-transform: uppercase; letter-spacing: .05em; padding: 3px 6px; border-radius: 9px; background: var(--panel); color: var(--muted); }
+  .layer.org { background: var(--org-bg); color: var(--org-fg); }
+  .sp { flex: 1; }
+  .ph button { border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 2px 6px; border-radius: 5px; }
+  /* --pb-max comes from the page's height, set per show. The scrollbar is thin and only shown while
+     the pointer is over the text; its gutter is kept so the text does not move when it appears. */
+  .pb { padding: 10px 14px 10px; max-height: var(--pb-max, 75vh); overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .pb:hover, .pb:focus-within { scrollbar-color: var(--muted) transparent; }
+  .pt { font-weight: 600; font-size: 15px; margin-bottom: 3px; }
+  .where { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); margin-bottom: 6px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel); padding: .1em .35em; border-radius: 4px; }
+  .xref { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; padding: 0; font: inherit; }
+  .prov, .crumbs, .hint { font-size: 12px; color: var(--muted); padding: 0 14px 10px; }
+  .prov a, .pb a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="box" hidden></div>
+<script src="shared.js"></script>
+<script src="popover.js"></script>
+</body>
+</html>

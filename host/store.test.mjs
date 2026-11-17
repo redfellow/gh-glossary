@@ -12,13 +12,43 @@ const META = { origin: PAGE, definedAt: '2026-01-01T00:00:00.000Z', ref: 'abc', 
 // Glossary files of two repositories of one owner, in a fresh folder.
 function fresh() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-store-'));
-  const org = path.join(base, 'octo-org', '_org', 'glossary.json');
+  const org = path.join(base, 'octo-org', '@org', 'glossary.json');
   return { widgets: { repo: path.join(base, 'octo-org', 'widgets', 'glossary.json'), org }, gadgets: { repo: path.join(base, 'octo-org', 'gadgets', 'glossary.json'), org } };
 }
 const term = (id, o = {}) => ({ id, term: id, category: 'domain', layer: 'repo', pattern: `\\b${id}\\b`, code: false, def: `What ${id} is.`, verified: false, ...o });
 const ids = (f) => readJson(f, { terms: [] }).terms.map((t) => t.id).sort();
 const shown = (files, id) => mergedGlossary(files).find((t) => t.id === id);
 const quiet = () => {};
+
+test('Pattern checks: forms that can take exponential time are refused, the usual term forms are not', () => {
+  for (const p of ['(?:a+)+', '(?:a|ab)*', '(?:\\w+\\s?){2,}', '\\b(?:x)\\1', 'a'.repeat(501)]) assert.ok(checkPattern(p), p);
+  for (const p of ['\\bOry Hydra\\b|\\bHydra\\b', '\\b(?:AIVO )?Control Plane\\b', '\\bfoo\\(\\)+', '[()+]+x', '\\b\\w+Store\\b']) assert.equal(checkPattern(p), null, p);
+});
+
+test('A stored pattern that fails the check never reaches a page', () => {
+  const { widgets } = fresh();
+  writeJson(widgets.repo, { repo: REPO, terms: [term('ok'), term('slow', { pattern: '\\b(?:a+)+b' })] });
+  assert.deepEqual(mergedGlossary(widgets).map((t) => t.id), ['ok']);
+});
+
+test('A glossary that does not parse is an error and stays on disk as it was', async () => {
+  const { widgets } = fresh();
+  writeJson(widgets.repo, { repo: REPO, terms: [term('relay')] });
+  const broken = fs.readFileSync(widgets.repo, 'utf8').replace('"relay",', '"relay"');
+  fs.writeFileSync(widgets.repo, broken);
+  assert.throws(() => mergedGlossary(widgets), /not valid JSON/);
+  await assert.rejects(defineWith(widgets, { repo: REPO, origin: PAGE }, async () => ({ out: { terms: [term('new')] }, meta: META })), /not valid JSON/);
+  assert.throws(() => storeTerms(widgets, REPO, [term('new')], META, quiet), /not valid JSON/);
+  assert.equal(fs.readFileSync(widgets.repo, 'utf8'), broken, 'the hand-edited file is untouched');
+  assert.equal(readJson(path.join(path.dirname(widgets.repo), 'missing.json'), 'default'), 'default', 'a missing file is still the default');
+});
+
+test('Writes leave no temporary file behind', () => {
+  const { widgets } = fresh();
+  writeJson(widgets.repo, { a: 1 }); writeJson(widgets.repo, { a: 2 });
+  assert.deepEqual(readJson(widgets.repo), { a: 2 });
+  assert.deepEqual(fs.readdirSync(path.dirname(widgets.repo)), ['glossary.json']);
+});
 
 test('Pattern checks: an invalid regex, a capturing group and an empty match are refused, nothing else', () => {
   assert.match(checkPattern('\\b(foo'), /invalid regex/);
@@ -157,4 +187,22 @@ test('Select runs are keyed by the whole text: a shared start gives two keys, th
   assert.equal(selectKey(REPO, 'pr-7', 'control plane'), selectKey(REPO, 'pr-7', 'control plane'));
   assert.notEqual(selectKey(REPO, 'pr-7', 'control plane'), selectKey(REPO, 'pr-8', 'control plane'));
   assert.match(selectKey(REPO, 'pr-7', 'a/b c'), /^octo-org\/widgets#pr-7#select#[0-9a-f]{16}$/);
+});
+
+test('A run on one repository cannot rewrite owner terms another repository defined, unless the owner is allowed', async () => {
+  const { widgets, gadgets } = fresh();
+  const WMETA = { ...META, origin: 'octo-org/widgets:pr-1' };
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org' }), term('broker', { layer: 'org', selected: true })], WMETA, quiet);
+  const evil = { ...META, origin: 'octo-org/gadgets:pr-9' }, logged = [];
+  await defineWith(gadgets, { repo: 'octo-org/gadgets', origin: evil.origin, log: (s) => logged.push(s) }, async () => ({
+    out: { terms: [term('relay', { layer: 'org', def: 'EVIL relay' })], corrections: [{ id: 'broker', def: 'EVIL broker', reason: 'x' }] }, meta: evil }));
+  assert.equal(shown(widgets, 'relay').def, 'What relay is.', 'the owner term is unchanged');
+  assert.equal(shown(widgets, 'broker').def, 'What broker is.', 'the correction is dropped');
+  assert.equal(shown(gadgets, 'relay').def, 'EVIL relay', 'the run\'s own repository gets its definition');
+  assert.equal(shown(gadgets, 'relay').layer, 'repo');
+  assert.match(logged.join('\n'), /saved relay in the repository glossary/);
+  assert.match(logged.join('\n'), /dropped correction broker/);
+  await defineWith(gadgets, { repo: 'octo-org/gadgets', origin: evil.origin, ownerAllowed: true, log: quiet }, async () => ({
+    out: { terms: [], corrections: [{ id: 'broker', def: 'Better broker', reason: 'x' }] }, meta: evil }));
+  assert.equal(shown(widgets, 'broker').def, 'Better broker', 'with the owner allowed, corrections apply');
 });
