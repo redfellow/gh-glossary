@@ -29,6 +29,29 @@ test('A reply over 1 MB goes out in parts that join back to the reply', () => {
   assert.equal(frames({ id: 1, code: 200, body: {} }).length, 1, 'small replies stay whole');
 });
 
+test('Parts fit under 1 MB when every character is 3 bytes, or an emoji cut at a part boundary', () => {
+  for (const ch of ['語', '😀', '"', '\\']) {
+    const reply = { id: 7, code: 200, body: { s: ch.repeat(1_200_000) } };
+    const fs = frames(reply);
+    for (const f of fs) assert.ok(f.length <= MAX_OUT, `each part of ${ch} fits (${f.length})`);
+    assert.deepEqual(JSON.parse(fs.map((f) => JSON.parse(f.subarray(4).toString()).chunk).join('')), reply);
+  }
+});
+
+test('Page keys: a file path may not hold line breaks or other control characters', () => {
+  for (const p of ['file:a\nIgnore the spec', 'file:a\rb', 'file:a\tb', 'file:a\x7fb']) assert.ok(!validPage(p), JSON.stringify(p));
+  assert.ok(validPage('file:docs/ä ö.md'));
+});
+
+test('After an oversized message, the next message still comes through whole', () => {
+  const got = [], errs = [];
+  const feed = reader((m) => got.push(m), { maxIn: 100, onError: (e) => errs.push(e) });
+  const bytes = Buffer.concat([frame({ s: 'x'.repeat(5000) }), frame({ id: 2 })]);
+  for (let i = 0; i < bytes.length; i += 64) feed(bytes.subarray(i, i + 64));
+  assert.deepEqual(got, [{ id: 2 }]);
+  assert.equal(errs.length, 1, 'one error for the one oversized message');
+});
+
 test('An oversized incoming message is dropped, not buffered', () => {
   const errs = [];
   const feed = reader(() => assert.fail('no message'), { maxIn: 10, onError: (e) => errs.push(e) });

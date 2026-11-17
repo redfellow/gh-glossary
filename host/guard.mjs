@@ -6,18 +6,89 @@
 // Claude Code calls it with the tool call as JSON on stdin. Roots and repo come from the environment
 // the host sets: GHG_ROOTS (JSON array of absolute folders) and GHG_REPO (owner/repo).
 // A refusal is printed as a PreToolUse "deny" decision; anything allowed falls through to the run's
-// --allowedTools list.
+// --allowedTools list. Unknown tools, unknown options and input that does not parse are refused.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { samePath } from './platform.mjs';
 
-const GIT_SUBCOMMANDS = new Set(['log', 'show', 'diff', 'grep', 'blame', 'status', 'ls-files']);
-const GH_COMMANDS = new Set(['pr view', 'pr diff', 'pr checks', 'issue view']);
-// Options that make a read-only git command write a file, read outside the repository, or run a program.
-const GIT_FORBIDDEN = ['--output', '--no-index', '--contents', '--open-files-in-pager', '--ext-diff', '--textconv', '--file', '--exec', '--paginate'];
-const GIT_SAFE_PREFIXES = new Set(['--text']); // real options that happen to be prefixes of forbidden ones
-const GIT_GREP_FORBIDDEN_SHORT = /[Of]/; // -O<pager> runs a program, -f <file> reads one
+// Every option a run may pass, per command. Anything not listed is refused, so an option that writes a
+// file, reads one from outside the checkout or runs a program (git grep -O<pager>, git blame -S <file>,
+// git log --output, gh --web) is refused without having to be named, and so is any option a later
+// git or gh adds. git also takes abbreviations of long options; those are refused too, since only
+// whole names are listed.
+// A long option is 'flag' (no value), 'value' (--x=v or --x v), 'attached' (--x=v only) or
+// 'optional' (--x or --x=v). A short option is 'flag', 'value' (-xv or -x v), 'attached' (-xv only) or
+// 'optional' (-x or -xv), and short flags may be bundled (-nw).
+// A value given as the next word may not start with -. Where the guard thinks an option takes the
+// next word and git does not (git log -U --output=x: -U never takes the next word), the guard would
+// otherwise skip an option git then obeys.
+const DIFF_LONG = {
+  'patch': 'flag', 'no-patch': 'flag', 'stat': 'optional', 'shortstat': 'flag', 'numstat': 'flag', 'compact-summary': 'flag',
+  'dirstat': 'optional', 'summary': 'flag', 'name-only': 'flag', 'name-status': 'flag', 'raw': 'flag', 'unified': 'attached',
+  'color': 'optional', 'no-color': 'flag', 'color-moved': 'optional', 'word-diff': 'optional', 'word-diff-regex': 'attached',
+  'ignore-all-space': 'flag', 'ignore-space-change': 'flag', 'ignore-space-at-eol': 'flag', 'ignore-cr-at-eol': 'flag',
+  'ignore-blank-lines': 'flag', 'function-context': 'flag', 'minimal': 'flag', 'patience': 'flag', 'histogram': 'flag',
+  'find-renames': 'optional', 'no-renames': 'flag', 'find-copies': 'optional', 'diff-filter': 'attached', 'relative': 'optional',
+  'text': 'flag', 'abbrev': 'optional', 'no-abbrev': 'flag', 'full-index': 'flag', 'no-prefix': 'flag',
+  'no-ext-diff': 'flag', 'no-textconv': 'flag', 'exit-code': 'flag', 'quiet': 'flag', 'check': 'flag',
+  'pickaxe-all': 'flag', 'pickaxe-regex': 'flag',
+};
+const DIFF_SHORT = { p: 'flag', u: 'flag', s: 'flag', U: 'attached', w: 'flag', b: 'flag', W: 'flag', a: 'flag', M: 'optional', C: 'optional', R: 'flag', S: 'value', G: 'value' };
+const LOG_LONG = {
+  ...DIFF_LONG,
+  'oneline': 'flag', 'format': 'attached', 'pretty': 'optional', 'date': 'value', 'decorate': 'optional', 'no-decorate': 'flag',
+  'graph': 'flag', 'max-count': 'value', 'skip': 'value', 'since': 'value', 'after': 'value', 'until': 'value', 'before': 'value',
+  'author': 'value', 'committer': 'value', 'grep': 'value', 'all-match': 'flag', 'invert-grep': 'flag', 'regexp-ignore-case': 'flag',
+  'extended-regexp': 'flag', 'fixed-strings': 'flag', 'first-parent': 'flag', 'merges': 'flag', 'no-merges': 'flag',
+  'all': 'flag', 'branches': 'optional', 'tags': 'optional', 'remotes': 'optional', 'reverse': 'flag', 'follow': 'flag',
+  'topo-order': 'flag', 'date-order': 'flag', 'author-date-order': 'flag', 'ancestry-path': 'flag', 'full-history': 'flag',
+  'simplify-by-decoration': 'flag', 'left-right': 'flag', 'cherry-pick': 'flag', 'boundary': 'flag', 'parents': 'flag',
+  'children': 'flag', 'source': 'flag', 'cc': 'flag', 'no-walk': 'optional', 'notes': 'optional', 'no-notes': 'flag',
+};
+const LOG_SHORT = { ...DIFF_SHORT, n: 'value', L: 'value', i: 'flag', E: 'flag', F: 'flag', m: 'flag', c: 'flag', '#': 'count' };
+const GIT = {
+  log: { long: LOG_LONG, short: LOG_SHORT },
+  show: { long: LOG_LONG, short: LOG_SHORT },
+  diff: { long: { ...DIFF_LONG, 'cached': 'flag', 'staged': 'flag', 'merge-base': 'flag' }, short: DIFF_SHORT },
+  grep: {
+    long: {
+      'line-number': 'flag', 'column': 'flag', 'ignore-case': 'flag', 'word-regexp': 'flag', 'invert-match': 'flag',
+      'files-with-matches': 'flag', 'name-only': 'flag', 'files-without-match': 'flag', 'count': 'flag', 'only-matching': 'flag',
+      'extended-regexp': 'flag', 'fixed-strings': 'flag', 'basic-regexp': 'flag', 'perl-regexp': 'flag', 'quiet': 'flag',
+      'show-function': 'flag', 'function-context': 'flag', 'heading': 'flag', 'break': 'flag', 'full-name': 'flag', 'cached': 'flag',
+      'text': 'flag', 'all-match': 'flag', 'and': 'flag', 'or': 'flag', 'not': 'flag', 'color': 'optional', 'no-color': 'flag',
+      'recursive': 'flag', 'no-recursive': 'flag', 'after-context': 'value', 'before-context': 'value', 'context': 'value',
+      'max-count': 'value', 'max-depth': 'value',
+    },
+    short: { n: 'flag', i: 'flag', I: 'flag', w: 'flag', v: 'flag', l: 'flag', L: 'flag', c: 'flag', h: 'flag', H: 'flag', o: 'flag',
+      E: 'flag', F: 'flag', G: 'flag', P: 'flag', q: 'flag', p: 'flag', W: 'flag', a: 'flag', r: 'flag',
+      e: 'value', A: 'value', B: 'value', C: 'value', m: 'value' },
+  },
+  blame: {
+    long: { 'porcelain': 'flag', 'line-porcelain': 'flag', 'show-name': 'flag', 'show-number': 'flag', 'show-email': 'flag', 'root': 'flag',
+      'show-stats': 'flag', 'date': 'value', 'abbrev': 'optional', 'ignore-rev': 'value', 'color-lines': 'flag', 'color-by-age': 'flag' },
+    short: { L: 'value', w: 'flag', s: 'flag', e: 'flag', l: 'flag', t: 'flag', f: 'flag', n: 'flag', p: 'flag', c: 'flag', b: 'flag', M: 'optional', C: 'optional' },
+  },
+  status: {
+    long: { 'short': 'flag', 'branch': 'flag', 'porcelain': 'optional', 'long': 'flag', 'untracked-files': 'optional', 'ignored': 'optional', 'no-renames': 'flag', 'verbose': 'flag' },
+    short: { s: 'flag', b: 'flag', u: 'optional', v: 'flag' },
+  },
+  'ls-files': {
+    long: { 'cached': 'flag', 'deleted': 'flag', 'modified': 'flag', 'others': 'flag', 'stage': 'flag', 'unmerged': 'flag', 'killed': 'flag',
+      'full-name': 'flag', 'directory': 'flag', 'no-empty-directory': 'flag', 'exclude-standard': 'flag', 'error-unmatch': 'flag', 'eol': 'flag',
+      'deduplicate': 'flag', 'abbrev': 'optional', 'format': 'attached', 'exclude': 'value' },
+    short: { c: 'flag', d: 'flag', m: 'flag', o: 'flag', s: 'flag', u: 'flag', k: 'flag', t: 'flag', v: 'flag', x: 'value' },
+  },
+};
+// gh: no --web (opens a browser), no --jq or --template (gojq reads environment variables with $ENV).
+const GH_VIEW = { long: { comments: 'flag', json: 'value', repo: 'value' }, short: { c: 'flag', R: 'value' } };
+const GH = {
+  'pr view': GH_VIEW,
+  'issue view': GH_VIEW,
+  'pr diff': { long: { patch: 'flag', 'name-only': 'flag', color: 'value', repo: 'value' }, short: { R: 'value' } },
+  'pr checks': { long: { required: 'flag', json: 'value', repo: 'value' }, short: { R: 'value' } },
+};
 
 // Splits a command line the way a shell would for plain words and quotes, and refuses anything a shell
 // would expand or treat as an operator. Returns the argument list, or null.
@@ -42,37 +113,102 @@ export function splitArgs(cmd) {
   return args;
 }
 
-const optName = (a) => a.split('=')[0];
+function nextValue(args, i, opt) {
+  if (i + 1 >= args.length) return { error: `option ${opt} needs a value.` };
+  const v = args[i + 1];
+  if (v.startsWith('-')) return { error: `the value of ${opt} may not start with -; attach it instead (${opt.startsWith('--') ? `${opt}=` : opt}<value>).` };
+  return { value: v };
+}
+// Options that write a file, read outside the checkout or run a program. They are not in any table;
+// this second check refuses them in any position before --, whatever the option parsing concluded.
+const NEVER = ['--output', '--no-index', '--ext-diff', '--textconv', '--contents', '--open-files-in-pager', '--exec', '--upload-pack', '--web', '--jq', '--template'];
+const never = (args) => {
+  const end = args.indexOf('--');
+  return (end < 0 ? args : args.slice(0, end)).find((x) => NEVER.some((n) => x === n || x.startsWith(`${n}=`)));
+};
 
-export function checkBash(cmd, repo) {
+// Reads args against an option table. Returns { error } or { values, operands }: every option value
+// (as [option name, value]) and every operand, for the caller to check.
+function parseOptions(args, { long, short }) {
+  const values = [], operands = [];
+  for (let i = 0; i < args.length; i++) {
+    const x = args[i];
+    if (x === '--') { operands.push(...args.slice(i + 1)); break; }
+    if (x.startsWith('--')) {
+      const eq = x.indexOf('='), name = eq < 0 ? x.slice(2) : x.slice(2, eq);
+      const kind = Object.hasOwn(long, name) ? long[name] : null;
+      if (!kind) return { error: `option --${name} is not allowed.` };
+      if (eq >= 0) { if (kind === 'flag') return { error: `option --${name} takes no value.` }; values.push([name, x.slice(eq + 1)]); }
+      else if (kind === 'attached') return { error: `option --${name} needs its value attached: --${name}=<value>.` };
+      else if (kind === 'value') { const v = nextValue(args, i, `--${name}`); if (v.error) return v; values.push([name, v.value]); i++; }
+      continue;
+    }
+    if (x.startsWith('-') && x.length > 1) {
+      if (/^-\d+$/.test(x)) { if (short['#'] !== 'count') return { error: `option ${x} is not allowed.` }; continue; }
+      for (let j = 1; j < x.length; j++) {
+        const c = x[j], kind = Object.hasOwn(short, c) && c !== '#' ? short[c] : null;
+        if (!kind) return { error: `option -${c} is not allowed.` };
+        if (kind === 'flag') continue;
+        const rest = x.slice(j + 1);
+        if (rest) values.push([c, rest.startsWith('=') ? rest.slice(1) : rest]);
+        else if (kind === 'attached') return { error: `option -${c} needs its value attached: -${c}<value>.` };
+        else if (kind === 'value') { const v = nextValue(args, i, `-${c}`); if (v.error) return v; values.push([c, v.value]); i++; }
+        break;
+      }
+      continue;
+    }
+    operands.push(x);
+  }
+  return { values, operands };
+}
+
+// A git operand may name only something inside the checkout: no absolute path (git diff switches to
+// --no-index by itself for a path outside the repository and prints the file) and no .. step, in any
+// part of a rev:path.
+const isAbsoluteAnywhere = (s) => path.posix.isAbsolute(s) || path.win32.isAbsolute(s);
+export function staysInside(arg) {
+  const s = String(arg);
+  if (/^[A-Za-z]:/.test(s)) return false; // a Windows drive, c:x included (relative to that drive's folder)
+  return !s.split(':').some((part) => isAbsoluteAnywhere(part) || part.split('/').includes('..'));
+}
+
+// ctx { roots, cwd }, when given, also resolves symlinks in git paths: a symbolic link committed in the
+// repository (outlink -> /etc) would otherwise let outlink/hosts name a file outside the checkout.
+export function checkBash(cmd, repo, ctx = null) {
   const a = splitArgs(cmd);
   if (!a || !a.length) return 'Run one plain command: no pipes, redirects, ;, &&, $(), globs or backslashes.';
+  const bad = never(a.slice(1));
+  if (bad) return `option ${bad.split('=')[0]} is not allowed.`;
   if (a[0] === 'git') {
-    if (!GIT_SUBCOMMANDS.has(a[1])) return `Only git ${[...GIT_SUBCOMMANDS].join(', ')} are allowed, with the subcommand first (no -C or -c).`;
-    for (const x of a.slice(2)) {
-      if (x === '--') break;
-      // git also takes unambiguous abbreviations of long options (--out=x is --output=x).
-      const name = optName(x);
-      if (x.startsWith('--') && !GIT_SAFE_PREFIXES.has(name) && GIT_FORBIDDEN.some((f) => f.startsWith(name))) return `git option ${name} is not allowed.`;
-      if (a[1] === 'grep' && /^-[A-Za-z]+$/.test(x) && GIT_GREP_FORBIDDEN_SHORT.test(x)) return 'git grep -O and -f are not allowed.';
+    const spec = Object.hasOwn(GIT, a[1] ?? '') ? GIT[a[1]] : null;
+    if (!spec) return `Only git ${Object.keys(GIT).join(', ')} are allowed, with the subcommand first (no -C or -c).`;
+    const r = parseOptions(a.slice(2), spec);
+    if (r.error) return `git ${a[1]}: ${r.error}`;
+    // Operands are revisions and paths; git grep's first one is the pattern unless -e gave it. No
+    // allowed option takes a file, so option values are not paths.
+    const paths = a[1] === 'grep' && !r.values.some(([opt]) => opt === 'e') ? r.operands.slice(1) : r.operands;
+    if (!paths.every(staysInside)) return 'git may only name files inside the checkout: no absolute paths or "..".';
+    if (ctx && !paths.filter((x) => !x.includes(':')).every((x) => inside(path.resolve(ctx.cwd || ctx.roots[0], x), ctx.roots))) {
+      return 'git may only name files inside the checkout: that path leads out of it through a symbolic link.';
     }
     return null;
   }
   if (a[0] === 'gh') {
-    if (!GH_COMMANDS.has(`${a[1]} ${a[2]}`)) return `Only ${[...GH_COMMANDS].map((c) => `gh ${c}`).join(', ')} are allowed.`;
+    const cmdName = `${a[1]} ${a[2]}`;
+    const spec = Object.hasOwn(GH, cmdName) ? GH[cmdName] : null;
+    if (!spec) return `Only ${Object.keys(GH).map((c) => `gh ${c}`).join(', ')} are allowed.`;
     const rest = a.slice(3);
-    for (let i = 0; i < rest.length; i++) {
-      const x = rest[i], name = optName(x);
-      if (name === '--web' || x === '-w') return 'gh --web is not allowed.';
-      if (name === '--repo' || name === '-R') {
-        const v = x.includes('=') ? x.slice(x.indexOf('=') + 1) : rest[++i];
-        if (!v || v.toLowerCase() !== String(repo).toLowerCase()) return `gh may only read ${repo}.`;
-        continue;
-      }
+    const r = parseOptions(rest, spec);
+    if (r.error) return `gh ${cmdName}: ${r.error}`;
+    const sameRepo = (v) => String(v).toLowerCase() === String(repo).toLowerCase();
+    if (r.values.some(([opt, v]) => (opt === 'repo' || opt === 'R') && !sameRepo(v))) return `gh may only read ${repo}.`;
+    for (const x of r.operands) {
       if (/^https?:/i.test(x)) {
         let u; try { u = new URL(x); } catch { return 'bad URL'; }
-        const [o, r] = u.pathname.split('/').filter(Boolean);
-        if (u.hostname !== 'github.com' || `${o}/${r}`.toLowerCase() !== String(repo).toLowerCase()) return `gh may only read ${repo}.`;
+        const [o, n] = u.pathname.split('/').filter(Boolean);
+        if (u.hostname !== 'github.com' || !sameRepo(`${o}/${n}`)) return `gh may only read ${repo}.`;
+      } else if (!/^\d+$/.test(x) && !(a[1] === 'pr' && /^[\w.\/-]+$/.test(x) && !x.startsWith('-'))) {
+        return `gh ${cmdName} takes a number${a[1] === 'pr' ? ', a branch' : ''} or a URL of ${repo}.`;
       }
     }
     return null;
@@ -98,6 +234,9 @@ export function inside(p, roots) {
   return roots.some((root) => { const r = path.relative(real(root), rp); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); });
 }
 
+// Tools that read nothing and run nothing: the run's structured reply and its own task list.
+const HARMLESS_TOOLS = new Set(['StructuredOutput', 'TodoWrite']);
+
 export function checkTool(name, input, { roots, repo, cwd }) {
   input = input || {};
   const where = (p) => (p === undefined || p === null || p === '' ? cwd : path.isAbsolute(p) ? p : path.resolve(cwd || '/', p));
@@ -110,16 +249,20 @@ export function checkTool(name, input, { roots, repo, cwd }) {
     if (pat.split(/[\\/]/).includes('..') || (path.isAbsolute(pat) && !inside(pat.replace(/[*?[{].*$/, '') || '/', roots))) return outside;
     return null;
   }
-  if (name === 'Bash') return checkBash(input.command, repo);
-  return null; // everything else is decided by --allowedTools and dontAsk
+  if (name === 'Bash') return checkBash(input.command, repo, { roots, cwd });
+  if (HARMLESS_TOOLS.has(name)) return null;
+  // The reader's own permissions.allow rules load too (--setting-sources user), so a tool that is
+  // not listed here is refused rather than left to them.
+  return `${typeof name === 'string' ? name : 'This tool'} is not available to a gh-glossary run.`;
 }
 
 function main() {
   let raw = '';
   process.stdin.on('data', (d) => (raw += d));
   process.stdin.on('end', () => {
-    let ev = {};
+    let ev = null;
     try { ev = JSON.parse(raw); } catch {}
+    if (!ev || typeof ev !== 'object') ev = {}; // tool_name is then missing, and the call is refused
     let roots = [];
     try { roots = JSON.parse(process.env.GHG_ROOTS || '[]'); } catch {}
     const reason = roots.length

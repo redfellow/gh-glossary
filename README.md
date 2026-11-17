@@ -58,8 +58,8 @@ everything you need, start to finish.
    in Edge), turn on **Developer mode** (top right), click **Load unpacked** and pick
    `~/gh-glossary/extension`.
 
-6. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
-   click **Quick**. The first run on a repo asks you to allow it (see
+6. Try it: open any repository on github.com, click the **gh-glossary** tab on the right edge (or
+   the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
 **Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
@@ -112,8 +112,8 @@ Run the commands below in PowerShell. No administrator rights are needed.
    in Brave), turn on **Developer mode**, click **Load unpacked** and pick the `gh-glossary\extension`
    folder in your user folder.
 
-6. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
-   click **Quick**. The first run on a repo asks you to allow it (see
+6. Try it: open any repository on github.com, click the **gh-glossary** tab on the right edge (or
+   the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
 **Updating:** run `git pull` in `$HOME\gh-glossary`, then click the reload icon on the extension in
@@ -165,8 +165,8 @@ Run the commands below in PowerShell. No administrator rights are needed.
    in Edge), turn on **Developer mode** (top right), click **Load unpacked** and pick
    `~/gh-glossary/extension`.
 
-7. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
-   click **Quick**. The first run on a repo asks you to allow it (see
+7. Try it: open any repository on github.com, click the **gh-glossary** tab on the right edge (or
+   the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
 **Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
@@ -191,10 +191,12 @@ On every PR page the tab title starts with `#<number>`, so the number survives n
 
 ![A pinned definition on a Rust source file: TintCounts, verified at its source](assets/screenshots/pinned-code.png)
 
-## The panel
+## The tab and the popup
 
-It starts as a small **gh-glossary** tab on the right edge of every repository page. Hover it and the
-panel pops out; click it and the panel stays open.
+Every repository page gets a small **gh-glossary** tab on the right edge. It shows the number of known
+terms and a dot: blue pulsing while a run is going, red after an error (hover the tab for why). Drag it
+along the edge, or across the middle to the other side. Click it, or the gh-glossary toolbar icon, to
+open the controls in the toolbar popup. The popup names the repository and page it acts on.
 
 ![The open panel on a pull request: Definitions switch, Quick and Thorough, Regenerate, Send to Claude](assets/screenshots/panel-pr.png)
 
@@ -207,28 +209,34 @@ panel pops out; click it and the panel stays open.
 - **Regenerate**: tick it, then Quick or Thorough. Defines the page again and, when the run succeeds,
   replaces the terms first defined from it. If the run fails the old terms stay. Terms you defined by
   selection are kept.
-- **Select text to define it.** Select a word or phrase anywhere on the page (code view included). A
-  **Define “…”** button appears and defines just that, in about 10 seconds. If it is already in the
-  glossary, the button says **Show “…”** and opens it without a run.
 - **Send to Claude** (pull requests and Markdown documents) opens a new Claude Code session in the
   Claude desktop app with the PR or document in the composer, ready to read with `gh`. You press Enter.
   The text and the folder per repo are set in the extension's options.
-- **Docked** switch, or drag the panel until the pointer touches a screen edge, to fold it back into the
-  tab. The tab shows the number of terms and a dot: blue pulsing while a run is going, red after an
-  error. Drag the tab along the edge to move it.
+- Runs keep going when the popup closes; the tab's dot shows them.
+
+**Select text to define it.** Select a word or phrase anywhere on the page (code view included),
+right-click it and choose **Define “…” with gh-glossary**. It defines just that, in about 10 seconds,
+and opens the definition when it is done. If it is already in the glossary, its definition opens
+without a run.
 
 ### Which repos Claude runs on
 
-The first Quick, Thorough or Define on a repo asks
-**Allow &lt;repo&gt;** or **Allow all of &lt;owner&gt;**. Your answer is stored in `config.json` and listed
-in the extension's options, where you can remove it. Stored glossaries stay readable either way.
+The first Quick, Thorough or Define on a repo asks in the popup: **Allow &lt;repo&gt;** or **Allow all of
+&lt;owner&gt;** (Cancel has the focus, so Enter cancels; closing the popup cancels too). For a Define from the
+context menu, the popup opens with the question. After you allow, the run you asked for starts.
+Allowing one repo lets its runs add owner terms but not change owner terms another repo defined;
+allowing the owner lets them. Your answer is stored in `config.json` and listed in the extension's
+options, where you can remove it. Stored glossaries stay readable either way.
 
 ## How it fits together
 
 ```mermaid
 flowchart LR
     page["GitHub page"] -->|"page, selection"| cs["Content script<br>extension/content.js"]
-    cs <-->|"requests, glossaries"| sw["Service worker<br>extension/background.js"]
+    cs <-->|"glossary reads"| sw["Service worker<br>extension/background.js"]
+    cs -->|"term to show"| frame["Definition frame<br>extension/popover.html"]
+    popup["Toolbar popup<br>extension/popup.html"] -->|"Quick, Thorough, allow"| sw
+    menu["Context menu: Define"] --> sw
     opts["Options page<br>extension/options.html"] -->|"status, allowlist"| sw
     sw <-->|"native messaging (stdio)"| host["Host<br>host/host.mjs"]
     host -->|"runs"| claude["claude -p"]
@@ -239,8 +247,11 @@ flowchart LR
 
 | Part | File | Job |
 |---|---|---|
-| Content script | `extension/content.js` | Panel, underlines, popover. Uses CSS Custom Highlights, so it does not rewrite GitHub's DOM. |
-| Service worker | `extension/background.js` | Holds the one connection to the host and decides which requests each sender may make. Builds the Send to Claude link (`extension/link.js`). |
+| Content script | `extension/content.js` | Underlines, the tab, and where the definition frame goes. Uses CSS Custom Highlights, so it does not rewrite GitHub's DOM; nothing it draws can start a run. |
+| Definition frame | `extension/popover.html` | The definition box: an extension page in a frame next to the term, which scripts on the page cannot read or click into. |
+| Toolbar popup | `extension/popup.html` | Quick, Thorough, Regenerate, Send to Claude, the page's status, and the question whether Claude may run on a repo or owner: the only place the allowlist grows. |
+| Service worker | `extension/background.js` | Holds the one connection to the host and decides which requests each sender may make. Starts runs for the popup and the context menu, asking to allow first when needed. Builds the Send to Claude link (`extension/link.js`). |
+| Shared code | `extension/shared.js` | Which GitHub page an address is, and where terms occur in a text. |
 | Options | `extension/options.html` | Host status, allowlist, Send to Claude templates and folders. |
 | Host | `host/host.mjs` | Checks out the right commit, gathers the page, runs Claude, stores results. Node + `gh`, no dependencies. |
 | Guard | `host/guard.mjs` | A hook on every tool call Claude makes during a run (see Safety). |
@@ -277,7 +288,7 @@ Two layers, both under `cache/data/` (not committed):
 
 - **Repo**: what a term means in that repository. `cache/data/<owner>/<repo>/glossary.json`
 - **Owner**: terms that mean the same across all repos of the organization or user.
-  `cache/data/<owner>/_org/glossary.json`. Claude decides the layer; if both exist, the repo's meaning
+  `cache/data/<owner>/@org/glossary.json` (`_org/` before; moved on first use). Claude decides the layer; if both exist, the repo's meaning
   wins.
 
 Each definition shows its category and layer, whether it was checked at its source, the page and
@@ -290,20 +301,27 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
 
 - **No port, no token.** Chrome starts the host over native messaging, and the host registration
   allows only this extension's ID. The service worker accepts host requests only from the extension's
-  own content script on `https://github.com/*` and from its options page, each limited to the requests
-  it needs.
-- **You choose the repos.** Runs start only for allowlisted repos or owners. Only a real click on the
-  allow prompt adds to the list; a click faked by a page script is ignored.
+  own pages and content script, each limited to the requests it needs: the content script only reads.
+- **Nothing on the GitHub page starts a run.** The page shows only the underlines, the tab and the
+  definition frame. Runs start from the toolbar popup or the context menu, which scripts on github.com
+  cannot reach; the tab only opens the popup, and only for a real click. Definitions are shown inside
+  an extension frame, so page scripts cannot read them. Page scripts can see which words are
+  underlined.
+- **You choose the repos.** Runs start only for allowlisted repos or owners. Only your answer in the
+  popup, which scripts on github.com cannot reach, adds to the list.
 - **Read-only, inside the checkout.** Claude runs with `--permission-mode dontAsk` and read-only tools
   (`Read`, `Grep`, `Glob`, `git log/show/diff/grep/blame/status/ls-files`, `gh pr view/diff/checks`,
   `gh issue view`). The guard hook (`host/guard.mjs`) also checks every call: files only inside the
   run's checkout and run folder (symlinks resolved), one plain command at a time (no pipes, `;`, `$()`,
-  redirects or globs), no git options that write files, read outside the repository or start a program
-  (`--output`, `--no-index`, `--contents`, `-O`, `--ext-diff` and the like, abbreviations included),
-  and `gh` only on the page's own repository and never `--web`.
+  redirects or globs), only the git and gh options on the guard's list for each command (so nothing
+  that writes files, reads files it names or starts a program, such as `--output` or `git grep -O`),
+  no absolute paths or `..` in git arguments, and `gh` only on the page's own repository, never
+  `--web` or `--jq`. Any other tool is refused, even if your own settings allow it.
 - Only your user settings are loaded, so hooks or settings committed in the repo do not run. MCP
   servers and Chrome are off for the run. Web tools, Write and Edit are off.
-- The extension escapes everything Claude wrote before showing it, and only offers `https` links.
+- The extension escapes everything Claude wrote before showing it. A definition's link must be
+  `https`, is labelled with its host, and is opened without its query or fragment. Send to Claude
+  percent-encodes the file path and branch it puts in the prompt.
 - One Claude run at a time; others queue.
 
 ## Tests
@@ -318,7 +336,7 @@ icons.
 ## Files under `cache/` (not committed)
 
 ```
-cache/data/<owner>/_org/glossary.json      owner layer
+cache/data/<owner>/@org/glossary.json      owner layer
 cache/data/<owner>/<repo>/glossary.json    repo layer
 cache/data/<owner>/<repo>/pages.json       last run per page (when, model, terms added)
 cache/repos/<owner>/<repo>/                checkout used during runs
@@ -333,7 +351,8 @@ cache/logs/                                host.log, plus one log and raw result
   changed, and `.react-file-line` lines on source pages. If underlines stop appearing, check these first.
 - Directory READMEs (`/tree/<branch>/<dir>`) are not covered; the repo-root README is.
 - A pattern that is too broad underlines unrelated words. Regenerate the page it came from (the
-  definition box says which), or edit the glossary JSON by hand.
+  definition box says which), or edit the glossary JSON by hand. A glossary with a JSON error is
+  reported and left alone until you fix it; runs for that repo fail until then.
 - Runs live in the host, which Chrome stops when it quits: a run going at that moment is lost.
 - Windows support is new. CI checks the install script, the host and the guard on Windows, but
   real runs there have had far less use than on macOS and Linux. Please open an issue if one fails.

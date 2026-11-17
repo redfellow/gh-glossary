@@ -20,6 +20,7 @@
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frames, reader } from './native.mjs';
@@ -81,7 +82,18 @@ const READ_ONLY_TOOLS = [
 // ---------- storage (the rules are in host/store.mjs) ----------
 const repoPath = (repo) => repo.split('/').map((s) => folderName(s));
 const dataDir = (repo) => path.join(CACHE, 'data', ...repoPath(repo));
-const glossaryFiles = (repo) => ({ repo: path.join(dataDir(repo), 'glossary.json'), org: path.join(CACHE, 'data', repoPath(repo)[0], '_org', 'glossary.json') });
+// The owner glossary lives in a folder named @org: no repository can be called that, while _org
+// (used before) is a valid repository name whose glossary would have been the owner's.
+const glossaryFiles = (repo) => ({ repo: path.join(dataDir(repo), 'glossary.json'), org: orgFile(repoPath(repo)[0]) });
+function orgFile(owner) {
+  const file = path.join(CACHE, 'data', owner, '@org', 'glossary.json');
+  const old = path.join(CACHE, 'data', owner, '_org', 'glossary.json');
+  // Moved only if it is an owner glossary ({ org }); a repository named _org keeps its own ({ repo }).
+  if (!fs.existsSync(file) && fs.existsSync(old) && (() => { try { const g = readJson(old, null); return g && 'org' in g && !('repo' in g); } catch { return false; } })()) {
+    try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.renameSync(old, file); hostLog(`moved ${old} to ${file}`); } catch (e) { hostLog(`could not move ${old}: ${e.message}`); }
+  }
+  return file;
+}
 const pagesPath = (repo) => path.join(dataDir(repo), 'pages.json');
 
 // ---------- processes ----------
@@ -97,6 +109,8 @@ function run(cmd, args, { cwd, input, env, timeoutMs = 5 * 60_000 } = {}) {
     children.add(p);
     let out = '', err = '';
     const t = setTimeout(() => { stopTree(p); reject(new Error(`${cmd} timed out`)); }, timeoutMs);
+    // Decoded as a stream, so a character split across two reads (ä, ö, emoji) stays whole.
+    p.stdout.setEncoding('utf8'); p.stderr.setEncoding('utf8');
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (err += d));
     p.on('error', (e) => { clearTimeout(t); children.delete(p); reject(e); });
@@ -120,14 +134,25 @@ const refSha = (repo, ref) => cached(`sha:${repo}@${ref}`, 60_000, async () =>
   (await run('gh', ['api', `repos/${repo}/commits/${encodeURIComponent(ref)}`, '-q', '.sha'])).trim());
 
 // A blob URL is /<ref>/<path> where the ref itself may contain slashes: try the shortest ref first.
+// The address comes from the page, so its length and the number of lookups are capped, and a failure
+// is remembered for a minute rather than looked up again on every request.
+const blobMisses = new Map();
 async function resolveBlob(repo, rest) {
-  return cached(`blob:${repo}/${rest}`, 3600_000, async () => {
+  rest = String(rest);
+  if (rest.length > 1500) throw new Error('the file address is too long');
+  const key = `${repo}/${rest}`;
+  if (Date.now() - (blobMisses.get(key) || 0) < 60_000) throw new Error(`cannot tell branch from path in ${rest}`);
+  return cached(`blob:${key}`, 3600_000, async () => {
     const segs = rest.split('/');
-    for (let i = 1; i < segs.length; i++) {
-      const ref = segs.slice(0, i).join('/');
+    let ref = '';
+    for (let i = 1; i < segs.length && i <= 20; i++) {
+      ref = ref ? `${ref}/${segs[i - 1]}` : segs[0];
+      if (ref.length >= 250) break;
       if (!validRef(ref)) continue;
       try { const sha = await refSha(repo, ref); if (sha) return { ref, sha, path: segs.slice(i).join('/') }; } catch {}
     }
+    blobMisses.set(key, Date.now());
+    if (blobMisses.size > 500) blobMisses.delete(blobMisses.keys().next().value);
     throw new Error(`cannot tell branch from path in ${rest}`);
   });
 }
@@ -175,6 +200,9 @@ async function gatherPage(repo, page, co, runDir, ref) {
 }
 
 // ---------- jobs (one Claude run at a time) ----------
+// A job's error is shown on the GitHub page, where page scripts can read it: local folders become
+// short names.
+const tidy = (s) => String(s).split(CACHE).join('cache').split(ROOT).join('gh-glossary').split(os.homedir()).join('~');
 const jobs = new Map(); // `${repo}#${page}#${kind}` -> job
 let queue = Promise.resolve();
 function enqueue(key, fn) {
@@ -190,7 +218,7 @@ function enqueue(key, fn) {
       job.result = await fn(log, logPath);
       job.state = 'done'; job.doneAt = new Date().toISOString();
       setTimeout(() => { if (jobs.get(key) === job) jobs.delete(key); }, 10 * 60_000);
-    } catch (e) { job.state = 'error'; job.error = e.message; job.log = logPath; log(`error: ${e.stack || e.message}`); }
+    } catch (e) { job.state = 'error'; job.error = tidy(e.message); job.log = path.basename(logPath); log(`error: ${e.stack || e.message}`); }
   }).catch(() => {});
   return job;
 }
@@ -244,7 +272,7 @@ function startDefine(repo, page, ref, mode, regenerate) {
     const what = await gatherPage(repo, page, co, runDir, shown);
     let cost = null;
     // Regenerate: the run does not see this page's terms, and they are replaced only if it succeeds.
-    const { ids, corrected, meta } = await defineWith(files, { repo, origin, full: mode === 'thorough', regenerate, log }, async (glossary) => {
+    const { ids, corrected, meta } = await defineWith(files, { repo, origin, full: mode === 'thorough', regenerate, ownerAllowed: ownerAllowed(repo), log }, async (glossary) => {
       writeJson(path.join(runDir, 'glossary.json'), glossary);
       const prompt = [
         `Run the ${mode === 'thorough' ? 'Thorough' : 'Quick'} operation on this GitHub page of ${repo}: ${what}.`,
@@ -278,7 +306,7 @@ function startSelect(repo, page, ref, text, context) {
     ].join('\n');
     const { out, model } = await claude('select', { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
     const meta = { origin: `${repo}:${page}`, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion(), selected: true };
-    const [termId] = storeTerms(glossaryFiles(repo), repo, [out.term], meta, log);
+    const [termId] = storeTerms(glossaryFiles(repo), repo, [out.term], meta, log, { ownerAllowed: ownerAllowed(repo) });
     if (!termId) throw new Error('the definition came back with an unusable pattern; try selecting a slightly different span');
     log(`done: ${termId}`);
     return { termId, durationMs: Date.now() - t0 };
@@ -296,6 +324,7 @@ async function pageOf({ repo, page, blob, ref }) {
   return { page, ref: ref || null };
 }
 
+const ownerAllowed = (repo) => config.allow.owners.some((o) => lc(o) === lc(repo.split('/')[0]));
 const notAllowed = (repo) => ({ code: 403, body: { error: `${repo} is not on the allowlist`, notAllowed: true } });
 
 // ---------- requests ----------
