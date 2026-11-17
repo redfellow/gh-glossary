@@ -5,7 +5,7 @@
   "description": "Definitions for the terms on GitHub pages, written by Claude on your machine.",
   "license": "MIT",
   "scripts": {
-    "test": "node --test assets extension host",
+    "test": "node --test \"assets/*.test.mjs\" \"extension/*.test.mjs\" \"host/*.test.mjs\"",
     "icons": "node assets/build-icons.mjs"
   }
 }
