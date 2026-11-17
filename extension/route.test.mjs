@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const src = fs.readFileSync(new URL('./content.js', import.meta.url), 'utf8');
+// Routing lives in shared.js (used by the content script, the popup and the service worker); the
+// title fix is the content script's.
+const files = { route: fs.readFileSync(new URL('./shared.js', import.meta.url), 'utf8'), title: fs.readFileSync(new URL('./content.js', import.meta.url), 'utf8') };
 const block = (name) => {
+  const src = files[name];
   const a = src.indexOf(`// @ghl-test begin ${name}`), b = src.indexOf(`// @ghl-test end ${name}`);
   assert.ok(a >= 0 && b > a, `markers for ${name}`);
   return src.slice(a, b);
@@ -103,4 +106,13 @@ test('Observer on document.head applies the prefix', () => {
   assert.equal(observers[0].target, ctx.document.head);
   observers[0].cb();
   assert.equal(ctx.document.title, '#123 Fresh');
+});
+
+test('A malformed % escape in the address is not a page we handle, so the previous page does not stay active', () => {
+  assert.equal(load('/octo-org/octo-repo/blob/main/%E0%A4.md').ctx.route(''), null);
+});
+
+test('The popup and the service worker route an address they are given, not the current page', () => {
+  const { ctx } = load('/someone/else');
+  assert.deepEqual(plain(ctx.route('', '/octo-org/octo-repo/pull/9')), plain(load('/octo-org/octo-repo/pull/9').ctx.route('')));
 });

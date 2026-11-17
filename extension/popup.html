@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gh-glossary</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1f2328; --muted: #59636e; --bg: #ffffff; --panel: #f6f8fa; --border: #d1d9e0; --accent: #0969da; --bad: #d1242f; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #8d96a0; --bg: #0d1117; --panel: #161b22; --border: #30363d; --accent: #4493f8; --bad: #f85149; } }
+  body { margin: 0; width: 340px; background: var(--bg); color: var(--fg); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { padding: 10px 12px 12px; }
+  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .title { font-weight: 600; margin-right: auto; }
+  .where { color: var(--muted); margin: -4px 0 10px; overflow-wrap: anywhere; }
+  .lbl { color: var(--muted); margin-right: 2px; }
+  .btn { border: 1px solid var(--border); background: var(--panel); color: inherit; border-radius: 6px; padding: 3px 9px; cursor: pointer; font: inherit; }
+  .btn:hover { border-color: var(--accent); }
+  .btn[disabled] { opacity: .5; cursor: default; border-color: var(--border); }
+  label.chk { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); cursor: pointer; margin-left: 4px; }
+  .sw { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 2px 4px; }
+  .sw i { width: 28px; height: 16px; border-radius: 9px; background: var(--border); position: relative; flex: none; }
+  .sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .12s; }
+  .sw[aria-checked="true"] i { background: var(--accent); }
+  .sw[aria-checked="true"] i::after { transform: translateX(12px); }
+  .status { color: var(--muted); }
+  .status div + div { margin-top: 3px; }
+  .bad { color: var(--bad); }
+  code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .q { margin: 0 0 6px; font-weight: 600; overflow-wrap: anywhere; }
+  .hint { margin: 0 0 10px; color: var(--muted); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
+</head>
+<body>
+<main id="main"><div class="status">Loading…</div></main>
+<script src="shared.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

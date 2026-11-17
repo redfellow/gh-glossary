@@ -3,7 +3,11 @@
 // ({ id, part, parts, chunk }) that the extension joins back together.
 
 export const MAX_OUT = 1024 * 1024;
-const CHUNK = 512 * 1024; // characters per part: stays under MAX_OUT even if every character is 2 bytes
+// Characters (UTF-16 units) per part. One unit is at most 3 bytes in UTF-8 (CJK), and a part is the
+// slice JSON-encoded again, which turns a quote or backslash into 2 bytes and leaves the rest as they
+// are, so 3 bytes per unit plus the part's own fields stays under MAX_OUT. (A surrogate pair cut at a
+// part boundary is escaped as \uXXXX, 6 bytes, at most twice per part: the 1 KB margin covers it.)
+const CHUNK = Math.floor((MAX_OUT - 1024) / 3);
 
 export function frame(obj) {
   const body = Buffer.from(JSON.stringify(obj), 'utf8');
@@ -26,11 +30,18 @@ export function frames(reply) {
 // Feeds bytes in, calls onMessage(obj) for each complete message. Messages over maxIn bytes end the stream.
 export function reader(onMessage, { maxIn = 4 * 1024 * 1024, onError = () => {} } = {}) {
   let buf = Buffer.alloc(0);
+  let skip = 0; // bytes still to drop of a message that was over the limit
   return (data) => {
+    if (skip) { const n = Math.min(skip, data.length); skip -= n; data = data.subarray(n); if (!data.length) return; }
     buf = Buffer.concat([buf, data]);
     while (buf.length >= 4) {
       const len = buf.readUInt32LE(0);
-      if (len > maxIn) { onError(new Error(`message of ${len} bytes is over the limit`)); buf = Buffer.alloc(0); return; }
+      if (len > maxIn) {
+        onError(new Error(`message of ${len} bytes is over the limit`));
+        const have = buf.length - 4;
+        if (have >= len) { buf = buf.subarray(4 + len); continue; }
+        skip = len - have; buf = Buffer.alloc(0); return;
+      }
       if (buf.length < 4 + len) return;
       const body = buf.subarray(4, 4 + len);
       buf = buf.subarray(4 + len);

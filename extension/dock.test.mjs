@@ -36,9 +36,9 @@ test('Existing dock is kept: a left dock is returned unchanged', () => {
   assert.deepEqual(plain(t.store.dock), { side: 'left', top: 200 });
 });
 
-test('Opened panel stays open: dockInit set and dock null returns null, stores nothing', () => {
+test('Panel left open by an earlier version: the tab comes back on the right at 72, nothing stored', () => {
   const t = load({ dockInit: true, dock: null });
-  assert.equal(t.start(), null);
+  assert.deepEqual(plain(t.start()), { side: 'right', top: 72 });
   assert.deepEqual(t.writes, []);
 });
 
@@ -46,39 +46,12 @@ test('Flag is stored so a second call changes nothing', () => {
   const t = load();
   t.start();
   assert.equal(t.store.dockInit, true);
-  t.store.dock = null; // the user opened the panel
   const before = t.writes.length;
-  assert.equal(t.start(), null);
+  t.start();
   assert.equal(t.writes.length, before);
 });
 
-test('Open from the starting tab: dock is initialised by startDock and opening is stored', () => {
+test('The tab is set up by startDock and a drag stores the new edge and height', () => {
   assert.ok(src.includes('let dock = startDock(getVal, setVal);'));
-  assert.ok(!src.includes("let dock = getVal('dock', null)"));
-  const fn = src.slice(src.indexOf('function setDock(d) {'));
-  assert.match(fn.slice(0, fn.indexOf('}')), /dock = d; setVal\('dock', d\);/);
-});
-
-const clickHandler = () => {
-  const i = src.indexOf("if (e.target.closest('[data-dock]'))");
-  assert.ok(i >= 0, 'data-dock handler');
-  return src.slice(i, src.indexOf("if (e.target.closest('[data-min]'))", i));
-};
-
-test('Dock by button: a Docked switch with data-dock replaces the ⇥ button', () => {
-  assert.match(src, /<button class="ghl-sw docked" role="switch"[^>]*data-dock[^>]*><i><\/i>Docked<\/button>/);
-  assert.ok(!src.includes('⇥'));
-});
-
-test('Pin the popped-out window: the handler stores panelPos and calls setDock(null) when peeking', () => {
-  const h = clickHandler();
-  const p = h.indexOf('if (peek)');
-  assert.ok(p >= 0);
-  const peeking = h.slice(p, h.indexOf('dockAt('));
-  assert.match(peeking, /setVal\('panelPos'/);
-  assert.match(peeking, /setDock\(null\)/);
-});
-
-test('Switch on docks: otherwise the handler still calls dockAt(', () => {
-  assert.match(clickHandler(), /dockAt\(r\.left \+ r\.width \/ 2, r\.top\)/);
+  assert.match(src, /if \(moved\) \{ dock = \{ side: dock\.side, top: parseFloat\(tab\.style\.top\) \}; setVal\('dock', dock\); return; \}/);
 });

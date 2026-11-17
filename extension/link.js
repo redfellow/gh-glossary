@@ -12,6 +12,11 @@ export function fill(template, vars) {
 }
 
 const REPO_RE = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
+// A path or ref comes from the page's address, so it can hold quotes, ;, $ and line breaks. It is
+// percent-encoded (as a URL path would be anyway), so in the prompt it is one plain word that cannot
+// close the quotes of the gh command around it or start a new line.
+const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+const encPath = (p) => p.split('/').map(enc).join('/');
 
 // req: { kind: 'pr' | 'doc', repo, number?, path?, ref? }. folder: an absolute path already checked to exist, or null.
 export function claudeLink(templates, req, folder) {
@@ -23,7 +28,8 @@ export function claudeLink(templates, req, folder) {
   } else if (req.kind === 'doc') {
     const p = String(req.path || ''), ref = String(req.ref || '');
     if (!p || p.split('/').includes('..') || !ref) throw new Error('bad document path');
-    vars = { repo: req.repo, path: p, ref, url: `https://github.com/${req.repo}/blob/${ref}/${p}` };
+    const path = encPath(p), r = enc(ref);
+    vars = { repo: req.repo, path, ref: r, url: `https://github.com/${req.repo}/blob/${r}/${path}` };
   } else throw new Error('bad kind');
   let url = `claude://code/new?q=${encodeURIComponent(fill(templates[req.kind], vars))}`;
   if (folder) url += `&folder=${encodeURIComponent(folder)}`;
