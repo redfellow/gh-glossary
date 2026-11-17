@@ -7,6 +7,72 @@ for its definition, click to pin it, then click terms inside the box to follow t
 written by Claude (the `claude` CLI on your machine, with your login) from the page, the repo's docs
 and its code, and are stored locally.
 
+![Hovering “name chip” in a README shows its definition, with links to related terms](assets/screenshots/hover-readme.png)
+
+## Setup
+
+Runs on **macOS and Linux** with Chrome, Brave, Edge, Chromium or Arc. Windows is not supported.
+
+### 1. Install the tools
+
+You need Node 22 or newer, `git` and `gh`, plus the `claude` CLI, logged in.
+
+**macOS** (with [Homebrew](https://brew.sh)):
+
+```bash
+brew install node git gh
+```
+
+**Linux** (Debian/Ubuntu): get Node 22+ from [nodejs.org](https://nodejs.org) or [nvm](https://github.com/nvm-sh/nvm)
+(the distro's `nodejs` package is usually too old), then:
+
+```bash
+sudo apt install git gh
+```
+
+### 2. Log in to GitHub
+
+```bash
+gh auth login
+```
+
+Check with `gh auth status` and `node --version`.
+
+### 3. Get the code and register the host
+
+```bash
+git clone https://github.com/redfellow/gh-glossary.git ~/gh-glossary
+```
+
+```bash
+~/gh-glossary/host/install.sh
+```
+
+This tells your browsers how to start the host and that only this extension may talk to it. It registers
+for every supported browser that is installed. Run `host/install.sh status` to see where, and `uninstall`
+to remove it. Run `install` again after you move node, gh, git or claude.
+
+### 4. Load the extension
+
+1. Open `chrome://extensions` (in Brave `brave://extensions`, in Edge `edge://extensions`).
+2. Turn on **Developer mode** (top right).
+3. Click **Load unpacked** and pick the `extension` folder inside `~/gh-glossary`.
+
+Its ID is always `gmaheanekhfokcgeijckohbejbddipli` (fixed by the `key` in `manifest.json`), which is
+the ID the host registration allows.
+
+### 5. Try it
+
+Open any repository on github.com, hover the **gh-glossary** tab on the right edge and click **Quick**.
+The first run on a repo asks you to allow it (see [Which repos Claude runs on](#which-repos-claude-runs-on)).
+
+For **Send to Claude** you also need the Claude desktop app.
+
+**After a `git pull`:** click the reload icon on the extension in `chrome://extensions`. The host
+restarts with it.
+
+## What it underlines
+
 | Page | What gets underlined |
 |---|---|
 | Repo home (README), rendered `.md` files | prose concepts and code names |
@@ -17,10 +83,14 @@ and its code, and are stored locally.
 
 On every PR page the tab title starts with `#<number>`, so the number survives narrow tabs.
 
+![A pinned definition on a Rust source file: TintCounts, verified at its source](assets/screenshots/pinned-code.png)
+
 ## The panel
 
 It starts as a small **gh-glossary** tab on the right edge of every repository page. Hover it and the
 panel pops out; click it and the panel stays open.
+
+![The open panel on a pull request: Definitions switch, Quick and Thorough, Regenerate, Send to Claude](assets/screenshots/panel-pr.png)
 
 - **Definitions** switch, with the number of known terms.
 - **Define this page: Quick | Thorough** adds the terms on the page that qualify under
@@ -65,25 +135,6 @@ GitHub page ── content script ──▶ service worker ══ native messagi
 | Spec | `SPEC.md` | What gets defined and how. Sent ahead of every run. |
 | Skills | `.claude/skills/gh-glossary-{quick,thorough,select}/SKILL.md` | The steps of each operation. |
 | Output contracts | `schema/{quick,thorough,select}.schema.json` | Structured output each run must return. |
-
-## Setup
-
-1. **Prerequisites:** macOS or Linux, Chrome (or Brave, Edge, Chromium, Arc), Node 22 or newer, `gh`
-   logged in (`gh auth status`), and the `claude` CLI logged in. For **Send to Claude**: the Claude
-   desktop app.
-2. **Register the host** (tells Chrome how to start it, and that only this extension may):
-   ```bash
-   ~/Work/tools/gh-glossary/host/install.sh
-   ```
-   `host/install.sh status` shows where it is registered and `uninstall` removes it. Re-run `install`
-   after moving node, gh, git or claude.
-3. **Load the extension:** `chrome://extensions` → **Developer mode** on → **Load unpacked** → pick the
-   `extension` folder. Its ID is always `gmaheanekhfokcgeijckohbejbddipli` (fixed by the `key` in
-   `manifest.json`), which is what the host registration allows.
-4. Open a repository page, open the gh-glossary tab and click **Quick**.
-
-After a `git pull`, click the reload icon on the extension in `chrome://extensions`; the host is
-restarted with it.
 
 ## Configuration
 
