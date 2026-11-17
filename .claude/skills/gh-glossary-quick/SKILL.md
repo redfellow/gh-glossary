@@ -1,12 +1,12 @@
 ---
 name: gh-glossary-quick
-description: gh-glossary Quick operation. Define the qualifying terms on one GitHub page from the page and the repo's docs, following gh-glossary SPEC.md.
+description: gh-glossary Quick operation. Define the qualifying terms on one GitHub page from the page and the repo's docs, following the term-definition spec.
 ---
 
 # gh-glossary-quick
 
-Follow `SPEC.md` (gh-glossary definition spec), which comes before these instructions. This is the
-**Quick** operation (SPEC section 9).
+Follow the term-definition spec, which comes before these instructions. This is the **Quick**
+operation (requirement "Quick operation").
 
 ## Inputs
 
@@ -21,13 +21,14 @@ Read-only `gh` and `git` commands are allowed. Do not modify anything.
 ## Steps
 
 1. Read the page text: the whole document, or for a PR the description, comments and diff.
-2. List candidates and give each a category by SPEC section 2. Drop everything section 3 excludes,
-   including terms whose glossary pattern already matches them.
-3. For each candidate, take the meaning from the source column of section 2, but stop at the page,
-   README, CLAUDE.md, `docs/`, specs, and the definition site found with `git grep` (for `where`).
-   Do not trace code further. For `reference`, run one `gh issue view` / `gh pr view`.
-4. Order and cut by section 4; set `capHit`.
-5. Write each term by sections 5-7. `verified` is `true` only for `reference` terms you looked up.
-6. Check every pattern against section 6 before answering.
+2. List every candidate ("Every qualifying term is returned"): go through the page once per
+   category, in the order of "One category per term", and give each candidate its category. Drop everything the "Never-defined" requirements exclude, and every candidate
+   "Already-defined terms are not added again" covers.
+3. For each candidate, take the meaning from the source its category requirement names, but stop at
+   the page, README, CLAUDE.md, `docs/`, specs, and the definition site found with `git grep` (for
+   `where`). Do not trace code further. For `reference`, run one `gh issue view` / `gh pr view`.
+4. Write each term by "Term fields", "Source location fields", "Org layer", "Repo layer" and the
+   three "Definition" requirements. `verified` is `true` only for `reference` terms you looked up.
+5. Check every pattern against "Pattern form" and "Pattern specificity" before answering.
 
 Answer with the structured output only.

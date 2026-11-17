@@ -15,7 +15,8 @@
 // Page keys: pr-<n>, issue-<n>, discussion-<n>, file:<path>, readme.
 // Reading stored glossaries works for any repo; starting a Claude run needs the repo or its owner on
 // the allowlist (config.json "allow"), which only the extension's own allow prompt adds to.
-// What gets defined, and how, is decided by SPEC.md; each operation's steps are in .claude/skills/.
+// What gets defined, and how, is decided by the term-definition spec (openspec/specs/term-definition/spec.md);
+// each operation's steps are in .claude/skills/.
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -31,9 +32,8 @@ const GUARD = path.join(ROOT, 'host', 'guard.mjs');
 const OPERATIONS = ['quick', 'thorough', 'select'];
 const SKILLS = Object.fromEntries(OPERATIONS.map((op) => [op, path.join(ROOT, `.claude/skills/gh-glossary-${op}/SKILL.md`)]));
 const SCHEMAS = Object.fromEntries(OPERATIONS.map((op) => [op, fs.readFileSync(path.join(ROOT, `schema/${op}.schema.json`), 'utf8')]));
-const SPEC_PATH = path.join(ROOT, 'SPEC.md');
+const SPEC_PATH = path.join(ROOT, 'openspec', 'specs', 'term-definition', 'spec.md');
 const specVersion = () => Number(fs.readFileSync(SPEC_PATH, 'utf8').match(/Spec version: \*\*(\d+)\*\*/)?.[1] ?? 0);
-const TERM_CAP = 60;
 
 // stdout is the message channel: nothing else may write to it.
 fs.mkdirSync(path.join(CACHE, 'logs'), { recursive: true });
@@ -253,7 +253,7 @@ function enqueue(key, fn) {
 }
 
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-// Every run gets SPEC.md followed by its operation's skill as the appended system prompt, read-only
+// Every run gets the term-definition spec followed by its operation's skill as the appended system prompt, read-only
 // tools, and the guard hook (host/guard.mjs) that keeps it inside the checkout and the run folder.
 async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const { model, effort } = config.modes[op];
@@ -310,16 +310,15 @@ function startDefine(repo, page, ref, mode, regenerate) {
     const prompt = [
       `Run the ${mode === 'thorough' ? 'Thorough' : 'Quick'} operation on this GitHub page of ${repo}: ${what}.`,
       `The working directory is a checkout of ${co.sha}. Run inputs are in ${runDir}; glossary.json holds the ${glossary.length} terms already defined.`,
-      `The cap is ${TERM_CAP} new terms.`,
     ].join('\n');
     const { out, cost, model } = await claude(mode, { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
     const meta = { origin, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion() };
     const ids = storeTerms(repo, out.terms, meta, log);
     const corrected = applyCorrections(repo, out.corrections, meta, log);
     const pages = readJson(pagesPath(repo), {});
-    pages[page] = { lastRun: meta.definedAt, mode, model, ref: co.sha, added: ids.length, corrected, capHit: !!out.capHit, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec };
+    pages[page] = { lastRun: meta.definedAt, mode, model, ref: co.sha, added: ids.length, corrected, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec };
     writeJson(pagesPath(repo), pages);
-    log(`done: ${ids.length} terms, ${corrected} corrections, capHit ${!!out.capHit}`);
+    log(`done: ${ids.length} terms, ${corrected} corrections`);
     return { added: ids.length, corrected };
   });
 }

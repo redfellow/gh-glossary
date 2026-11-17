@@ -737,7 +737,7 @@
     else if (dj?.state === 'error') lines.push({ text: `Defining failed: ${esc(dj.error)}`, tone: 'bad' });
     if (pi) {
       const here = terms.filter((t) => t.origin === `${R.repo}:${data.page}`).length;
-      lines.push({ text: `${here} terms from this page${pi.corrected ? `, ${pi.corrected} corrected` : ''} · ${new Date(pi.lastRun).toLocaleDateString()} · ${esc(pi.model || pi.mode)}${took(pi.durationMs)}${pi.capHit ? ' · <b>cap reached</b>: Define again to continue' : ''}`, tone: pi.capHit ? 'warn' : '' });
+      lines.push({ text: `${here} terms from this page${pi.corrected ? `, ${pi.corrected} corrected` : ''} · ${new Date(pi.lastRun).toLocaleDateString()} · ${esc(pi.model || pi.mode)}${took(pi.durationMs)}` });
     } else if (!busy(dj)) lines.push({ text: `This page has not been defined yet. ${terms.length} terms known for this repo.` });
     if (!data.allowed) lines.push({ text: 'Not on your allowlist yet: Quick or Thorough asks first.' });
     return lines;
@@ -757,8 +757,8 @@
         <button class="ghl-sw docked" role="switch" aria-checked="${docked()}" data-dock title="Dock to the screen edge as a small tab (or drag the panel to an edge)"><i></i>Docked</button>
         <button class="min" data-min title="Collapse">${panel.classList.contains('is-min') ? '▸' : '▾'}</button></div>
       <div class="row"><span class="lbl">${regen ? 'Redo this page:' : 'Define this page:'}</span>
-        <button class="btn" data-define="quick" ${dis} title="${esc(modeLabel('quick'))}, about 1-3 min">Quick</button>
-        <button class="btn" data-define="thorough" ${dis} title="${esc(modeLabel('thorough'))}, about 5-15 min">Thorough</button>
+        <button class="btn" data-define="quick" ${dis} title="${esc(modeLabel('quick'))}, usually under a minute">Quick</button>
+        <button class="btn" data-define="thorough" ${dis} title="${esc(modeLabel('thorough'))}, about 5 min">Thorough</button>
         <label class="chk" title="Drop the terms first defined from this page, then define again"><input type="checkbox" data-regen ${regen ? 'checked' : ''} ${data?.pageInfo ? '' : 'disabled'}>Regenerate</label></div>
       ${canSend() ? `<div class="row"><button class="btn" data-claude title="Open a new Claude Code session in the Claude desktop app with this ${R.pr ? 'pull request' : 'document'} in the composer">Send to Claude</button></div>` : ''}
       <div class="status">${statusLines().map((l) => `<div class="${l.tone || ''}">${l.text}</div>`).join('')}</div>`;

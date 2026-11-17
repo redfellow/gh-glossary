@@ -1,12 +1,12 @@
 ---
 name: gh-glossary-select
-description: gh-glossary Select operation. Define exactly the text a reader selected on a GitHub page, following gh-glossary SPEC.md.
+description: gh-glossary Select operation. Define exactly the text a reader selected on a GitHub page, following the term-definition spec.
 ---
 
 # gh-glossary-select
 
-Follow `SPEC.md` (gh-glossary definition spec), which comes before these instructions. This is the
-**Select** operation (SPEC section 9).
+Follow the term-definition spec, which comes before these instructions. This is the **Select**
+operation (requirement "Select operation").
 
 ## Inputs
 
@@ -18,12 +18,13 @@ Read-only `gh` and `git` commands are allowed. Do not modify anything.
 
 ## Steps
 
-1. Define exactly the selected text, in the sense it has in the surrounding context. Section 3 does
-   not apply: the reader asked for this one.
-2. Give it a category by section 2 (the closest fit if none qualifies strictly) and a layer by
-   section 5.
-3. Verify it at the category's source (section 8) and set `verified` accordingly.
-4. The pattern must match the selected text as it appears on the page, and follow section 6.
+1. Define exactly the selected text, in the sense it has in the surrounding context. The
+   "Never-defined" requirements do not apply: the reader asked for this one.
+2. Give it a category by the category requirements (the closest fit if none qualifies strictly) and
+   a layer by "Org layer" and "Repo layer".
+3. Verify it at the category's source ("Verification flag") and set `verified` accordingly.
+4. The pattern must match the selected text as it appears on the page, and follow "Pattern form" and
+   "Pattern specificity".
 5. Link related glossary terms with `[[id]]` where it helps.
 
 Return one term. Answer with the structured output only.

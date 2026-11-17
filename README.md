@@ -94,8 +94,7 @@ panel pops out; click it and the panel stays open.
 
 - **Definitions** switch, with the number of known terms.
 - **Define this page: Quick | Thorough** adds the terms on the page that qualify under
-  [SPEC.md](SPEC.md) and are not defined yet (at most 60 per run; the panel says when the cap was hit,
-  and clicking again continues).
+  the [term-definition spec](openspec/specs/term-definition/spec.md) and are not defined yet.
   - **Quick** (Sonnet, medium; usually under a minute) defines from the page and the repo's docs.
   - **Thorough** (Opus, high; about 5 minutes) also checks every new term at its source, links related
     terms, and corrects existing definitions on the page that are wrong or too broad.
@@ -113,7 +112,7 @@ panel pops out; click it and the panel stays open.
 
 ### Which repos Claude runs on
 
-Nothing is sent to Claude until you say so. The first Quick, Thorough or Define on a repo asks
+The first Quick, Thorough or Define on a repo asks
 **Allow &lt;repo&gt;** or **Allow all of &lt;owner&gt;**. Your answer is stored in `config.json` and listed
 in the extension's options, where you can remove it. Stored glossaries stay readable either way.
 
@@ -132,7 +131,7 @@ GitHub page ── content script ──▶ service worker ══ native messagi
 | Options | `extension/options.html` | Host status, allowlist, Send to Claude templates and folders. |
 | Host | `host/host.mjs` | Checks out the right commit, gathers the page, runs Claude, stores results. Node + `gh`, no dependencies. |
 | Guard | `host/guard.mjs` | A hook on every tool call Claude makes during a run (see Safety). |
-| Spec | `SPEC.md` | What gets defined and how. Sent ahead of every run. |
+| Spec | `openspec/specs/term-definition/spec.md` | What gets defined and how. Sent ahead of every run. |
 | Skills | `.claude/skills/gh-glossary-{quick,thorough,select}/SKILL.md` | The steps of each operation. |
 | Output contracts | `schema/{quick,thorough,select}.schema.json` | Structured output each run must return. |
 
@@ -147,16 +146,17 @@ GitHub page ── content script ──▶ service worker ══ native messagi
 | `modes.thorough` | `opus` / `high` | Model and effort for Thorough. |
 | `modes.select` | `sonnet` / `medium` | Model and effort for defining a selection. |
 | `maxMinutes` | `30` | A run is stopped after this. |
-| `maxBudgetUsd` | unset | Optional spend cap per run (API billing). |
+| `maxBudgetUsd` | unset | Optional spend limit per run (API billing). |
 
 The host reads `config.json` when it starts: reload the extension after editing it.
 
-## What gets defined: SPEC.md
+## What gets defined: the term-definition spec
 
-[SPEC.md](SPEC.md) is the rulebook: the six categories (`reference`, `domain`, `code`, `external`,
-`library`, `acronym`) and when a term qualifies for each, what is never defined, the order used when
-the cap is hit, layer and pattern rules, the definition format, and what each operation does. To
-change what gets defined, change SPEC.md and bump its version.
+[openspec/specs/term-definition/spec.md](openspec/specs/term-definition/spec.md) is the rulebook: the
+six categories (`reference`, `domain`, `code`, `external`, `library`, `acronym`) and when a term
+qualifies for each, what is never defined, layer and pattern rules, the definition format, and what
+each operation does. To change what gets defined, change that spec through an OpenSpec change and
+raise its version. The other specs in `openspec/specs/` describe the rest of the extension.
 
 ## Glossaries
 
@@ -207,7 +207,7 @@ icons.
 ```
 cache/data/<owner>/_org/glossary.json      owner layer
 cache/data/<owner>/<repo>/glossary.json    repo layer
-cache/data/<owner>/<repo>/pages.json       last run per page (when, model, terms added, cap hit)
+cache/data/<owner>/<repo>/pages.json       last run per page (when, model, terms added)
 cache/repos/<owner>/<repo>/                checkout used during runs
 cache/runs/                                inputs handed to the last run of each page
 cache/logs/                                host.log, plus one log and raw result per run

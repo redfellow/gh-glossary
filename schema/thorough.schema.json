@@ -3,8 +3,7 @@
   "additionalProperties": false,
   "required": [
     "terms",
-    "corrections",
-    "capHit"
+    "corrections"
   ],
   "properties": {
     "terms": {
@@ -95,9 +94,6 @@
           }
         }
       }
-    },
-    "capHit": {
-      "type": "boolean"
     }
   }
 }

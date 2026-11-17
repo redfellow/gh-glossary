@@ -2,8 +2,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "terms",
-    "capHit"
+    "terms"
   ],
   "properties": {
     "terms": {
@@ -66,9 +65,6 @@
           }
         }
       }
-    },
-    "capHit": {
-      "type": "boolean"
     }
   }
 }
