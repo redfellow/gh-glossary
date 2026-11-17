@@ -119,10 +119,16 @@ in the extension's options, where you can remove it. Stored glossaries stay read
 
 ## How it fits together
 
-```
-GitHub page ── content script ──▶ service worker ══ native messaging (stdio) ══▶ host/host.mjs ──▶ claude -p
-     ▲                                                                              │
-     └──────────────────────────── glossaries ◀──────────────────────── cache/data/ ┘
+```mermaid
+flowchart LR
+    page["GitHub page"] -->|"page, selection"| cs["Content script<br>extension/content.js"]
+    cs <-->|"requests, glossaries"| sw["Service worker<br>extension/background.js"]
+    opts["Options page<br>extension/options.html"] -->|"status, allowlist"| sw
+    sw <-->|"native messaging (stdio)"| host["Host<br>host/host.mjs"]
+    host -->|"runs"| claude["claude -p"]
+    claude -.->|"every tool call"| guard["Guard hook<br>host/guard.mjs"]
+    host <-->|"writes, reads"| data[("Glossaries<br>cache/data/")]
+    host -->|"checks out commit"| repos[("Checkout<br>cache/repos/")]
 ```
 
 | Part | File | Job |
