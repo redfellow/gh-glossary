@@ -1,4 +1,5 @@
 // Pure checks shared by the host and its tests (no side effects on import).
+import { createHash } from 'node:crypto';
 
 const OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
@@ -12,3 +13,5 @@ export const validRef = (r) => typeof r === 'string' && r.length < 250 && !/[\0\
 export const lc = (s) => String(s).toLowerCase();
 export const isAllowed = (allow, repo) => allow.repos.some((r) => lc(r) === lc(repo)) || allow.owners.some((o) => lc(o) === lc(repo.split('/')[0]));
 
+// A Select run is identified by its page and the whole selected text.
+export const selectKey = (repo, page, text) => `${repo}#${page}#select#${createHash('sha256').update(String(text)).digest('hex').slice(0, 16)}`;

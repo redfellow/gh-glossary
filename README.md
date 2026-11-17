@@ -98,8 +98,9 @@ panel pops out; click it and the panel stays open.
   - **Quick** (Sonnet, medium; usually under a minute) defines from the page and the repo's docs.
   - **Thorough** (Opus, high; about 5 minutes) also checks every new term at its source, links related
     terms, and corrects existing definitions on the page that are wrong or too broad.
-- **Regenerate**: tick it, then Quick or Thorough. Drops the terms first defined from this page and
-  defines them again.
+- **Regenerate**: tick it, then Quick or Thorough. Defines the page again and, when the run succeeds,
+  replaces the terms first defined from it. If the run fails the old terms stay. Terms you defined by
+  selection are kept.
 - **Select text to define it.** Select a word or phrase anywhere on the page (code view included). A
   **Define “…”** button appears and defines just that, in about 10 seconds. If it is already in the
   glossary, the button says **Show “…”** and opens it without a run.

@@ -23,7 +23,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frames, reader } from './native.mjs';
-import { validRepo, validPage, validRef, isAllowed, lc } from './rules.mjs';
+import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rules.mjs';
+import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, 'cache');
@@ -76,76 +77,10 @@ const READ_ONLY_TOOLS = [
   'Bash(git status:*)', 'Bash(git ls-files:*)',
 ];
 
-// ---------- storage ----------
+// ---------- storage (the rules are in host/store.mjs) ----------
 const dataDir = (repo) => path.join(CACHE, 'data', ...repo.split('/'));
-const orgDir = (repo) => path.join(CACHE, 'data', repo.split('/')[0], '_org');
-const repoGlossaryPath = (repo) => path.join(dataDir(repo), 'glossary.json');
-const orgGlossaryPath = (repo) => path.join(orgDir(repo), 'glossary.json');
+const glossaryFiles = (repo) => ({ repo: path.join(dataDir(repo), 'glossary.json'), org: path.join(CACHE, 'data', repo.split('/')[0], '_org', 'glossary.json') });
 const pagesPath = (repo) => path.join(dataDir(repo), 'pages.json');
-const readJson = (p, d) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; } };
-const writeJson = (p, v) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(v, null, 2) + '\n'); };
-
-function mergedGlossary(repo) {
-  const org = readJson(orgGlossaryPath(repo), { terms: [] }).terms.map((t) => ({ ...t, layer: 'org' }));
-  const local = readJson(repoGlossaryPath(repo), { terms: [] }).terms.map((t) => ({ ...t, layer: 'repo' }));
-  const byId = new Map(org.map((t) => [t.id, t]));
-  for (const t of local) byId.set(t.id, t); // the repo's meaning wins
-  return [...byId.values()];
-}
-function storeTerms(repo, terms, meta, log) {
-  const files = { repo: repoGlossaryPath(repo), org: orgGlossaryPath(repo) };
-  const current = { repo: readJson(files.repo, { terms: [] }), org: readJson(files.org, { terms: [] }) };
-  const maps = { repo: new Map(current.repo.terms.map((t) => [t.id, t])), org: new Map(current.org.terms.map((t) => [t.id, t])) };
-  const ids = [];
-  for (const t of terms) {
-    const problem = checkPattern(t.pattern);
-    if (problem) { log(`dropped term ${t.id}: ${problem}`); continue; }
-    const layer = t.layer === 'org' ? 'org' : 'repo';
-    const { layer: _drop, ...rest } = t;
-    maps[layer].set(t.id, { ...rest, ...meta });
-    ids.push(t.id);
-  }
-  const now = new Date().toISOString();
-  writeJson(files.repo, { repo, updatedAt: now, terms: [...maps.repo.values()] });
-  writeJson(files.org, { org: repo.split('/')[0], updatedAt: now, terms: [...maps.org.values()] });
-  return ids;
-}
-// Thorough's corrections: replace def/pattern of an existing term in whichever layer holds it.
-function applyCorrections(repo, corrections, meta, log) {
-  let applied = 0;
-  for (const c of corrections || []) {
-    if (c.pattern) { const problem = checkPattern(c.pattern); if (problem) { log(`dropped correction ${c.id}: ${problem}`); continue; } }
-    for (const f of [repoGlossaryPath(repo), orgGlossaryPath(repo)]) {
-      const g = readJson(f, null); const t = g?.terms.find((x) => x.id === c.id);
-      if (!t) continue;
-      if (c.def) t.def = c.def;
-      if (c.pattern) t.pattern = c.pattern;
-      if (typeof c.code === 'boolean') t.code = c.code;
-      Object.assign(t, { revisedAt: meta.definedAt, revisedBy: meta.model, revisionReason: c.reason, spec: meta.spec });
-      writeJson(f, { ...g, updatedAt: new Date().toISOString() });
-      applied++; log(`corrected ${c.id}: ${c.reason}`);
-      break;
-    }
-  }
-  return applied;
-}
-function dropPageTerms(repo, origin) {
-  let removed = 0;
-  for (const f of [repoGlossaryPath(repo), orgGlossaryPath(repo)]) {
-    const g = readJson(f, null); if (!g) continue;
-    const kept = g.terms.filter((t) => t.origin !== origin);
-    removed += g.terms.length - kept.length;
-    writeJson(f, { ...g, updatedAt: new Date().toISOString(), terms: kept });
-  }
-  return removed;
-}
-function checkPattern(src) {
-  let re;
-  try { re = new RegExp(src); } catch (e) { return `invalid regex: ${e.message}`; }
-  if (new RegExp(`|${src}`).exec('').length > 1) return 'has a capturing group';
-  if (re.test('')) return 'matches the empty string';
-  return null;
-}
 
 // ---------- processes ----------
 const children = new Set();
@@ -292,31 +227,28 @@ async function pageCheckout(repo, page, ref) {
   const fetchRef = page.startsWith('pr-') ? `pull/${page.slice(3)}/head` : (ref || await defaultBranch(repo));
   return { co: await checkout(repo, fetchRef), shown: ref || fetchRef };
 }
-// Glossary handed to a run: Quick and Select only need what exists; Thorough also checks definitions.
-const glossaryFor = (repo, full) => mergedGlossary(repo).map((t) => full
-  ? { id: t.id, term: t.term, layer: t.layer, category: t.category, pattern: t.pattern, code: t.code, def: t.def, where: t.where }
-  : { id: t.id, term: t.term, layer: t.layer, pattern: t.pattern });
-
 function startDefine(repo, page, ref, mode, regenerate) {
   const origin = `${repo}:${page}`;
+  const files = glossaryFiles(repo);
   return enqueue(`${repo}#${page}#define`, async (log, logPath) => {
     const t0 = Date.now();
     const { co, shown } = await pageCheckout(repo, page, ref);
-    if (regenerate) log(`regenerate: dropped ${dropPageTerms(repo, origin)} terms from ${origin}`);
     const runDir = runDirFor(`${repo}#${page}#define`);
     const what = await gatherPage(repo, page, co, runDir, shown);
-    const glossary = glossaryFor(repo, mode === 'thorough');
-    writeJson(path.join(runDir, 'glossary.json'), glossary);
-    const prompt = [
-      `Run the ${mode === 'thorough' ? 'Thorough' : 'Quick'} operation on this GitHub page of ${repo}: ${what}.`,
-      `The working directory is a checkout of ${co.sha}. Run inputs are in ${runDir}; glossary.json holds the ${glossary.length} terms already defined.`,
-    ].join('\n');
-    const { out, cost, model } = await claude(mode, { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
-    const meta = { origin, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion() };
-    const ids = storeTerms(repo, out.terms, meta, log);
-    const corrected = applyCorrections(repo, out.corrections, meta, log);
+    let cost = null;
+    // Regenerate: the run does not see this page's terms, and they are replaced only if it succeeds.
+    const { ids, corrected, meta } = await defineWith(files, { repo, origin, full: mode === 'thorough', regenerate, log }, async (glossary) => {
+      writeJson(path.join(runDir, 'glossary.json'), glossary);
+      const prompt = [
+        `Run the ${mode === 'thorough' ? 'Thorough' : 'Quick'} operation on this GitHub page of ${repo}: ${what}.`,
+        `The working directory is a checkout of ${co.sha}. Run inputs are in ${runDir}; glossary.json holds the ${glossary.length} terms already defined.`,
+      ].join('\n');
+      const r = await claude(mode, { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
+      cost = r.cost;
+      return { out: r.out, meta: { origin, definedAt: new Date().toISOString(), ref: co.sha, model: r.model, spec: specVersion() } };
+    });
     const pages = readJson(pagesPath(repo), {});
-    pages[page] = { lastRun: meta.definedAt, mode, model, ref: co.sha, added: ids.length, corrected, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec };
+    pages[page] = { lastRun: meta.definedAt, mode, model: meta.model, ref: co.sha, added: ids.length, corrected, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec };
     writeJson(pagesPath(repo), pages);
     log(`done: ${ids.length} terms, ${corrected} corrections`);
     return { added: ids.length, corrected };
@@ -324,13 +256,13 @@ function startDefine(repo, page, ref, mode, regenerate) {
 }
 
 function startSelect(repo, page, ref, text, context) {
-  const key = `${repo}#${page}#select#${Buffer.from(text).toString('base64url').slice(0, 40)}`;
+  const key = selectKey(repo, page, text);
   const job = enqueue(key, async (log, logPath) => {
     const t0 = Date.now();
     const { co, shown } = await pageCheckout(repo, page, ref);
     const runDir = runDirFor(key);
     const what = await gatherPage(repo, page, co, runDir, shown);
-    writeJson(path.join(runDir, 'glossary.json'), glossaryFor(repo, false));
+    writeJson(path.join(runDir, 'glossary.json'), glossaryForRun(glossaryFiles(repo)));
     writeJson(path.join(runDir, 'selection.json'), { text, context });
     const prompt = [
       `Run the Select operation on this GitHub page of ${repo}: ${what}.`,
@@ -339,7 +271,7 @@ function startSelect(repo, page, ref, text, context) {
     ].join('\n');
     const { out, model } = await claude('select', { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
     const meta = { origin: `${repo}:${page}`, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion(), selected: true };
-    const [termId] = storeTerms(repo, [out.term], meta, log);
+    const [termId] = storeTerms(glossaryFiles(repo), repo, [out.term], meta, log);
     if (!termId) throw new Error('the definition came back with an unusable pattern; try selecting a slightly different span');
     log(`done: ${termId}`);
     return { termId, durationMs: Date.now() - t0 };
@@ -368,7 +300,7 @@ export async function handle({ method, path: p, query = {}, body = {} }) {
     if (!validPage(page)) return { code: 400, body: { error: 'bad page' } };
     const repo = query.repo;
     return { code: 200, body: {
-      page, ref, glossary: { terms: mergedGlossary(repo) },
+      page, ref, glossary: { terms: mergedGlossary(glossaryFiles(repo)) },
       pageInfo: readJson(pagesPath(repo), {})[page] || null,
       defineJob: jobs.get(`${repo}#${page}#define`) || null,
       modes: config.modes, allowed: isAllowed(config.allow, repo),

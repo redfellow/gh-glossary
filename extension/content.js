@@ -759,7 +759,7 @@
       <div class="row"><span class="lbl">${regen ? 'Redo this page:' : 'Define this page:'}</span>
         <button class="btn" data-define="quick" ${dis} title="${esc(modeLabel('quick'))}, usually under a minute">Quick</button>
         <button class="btn" data-define="thorough" ${dis} title="${esc(modeLabel('thorough'))}, about 5 min">Thorough</button>
-        <label class="chk" title="Drop the terms first defined from this page, then define again"><input type="checkbox" data-regen ${regen ? 'checked' : ''} ${data?.pageInfo ? '' : 'disabled'}>Regenerate</label></div>
+        <label class="chk" title="Define this page again. Its terms are replaced when the run succeeds; terms you defined by selection are kept"><input type="checkbox" data-regen ${regen ? 'checked' : ''} ${data?.pageInfo ? '' : 'disabled'}>Regenerate</label></div>
       ${canSend() ? `<div class="row"><button class="btn" data-claude title="Open a new Claude Code session in the Claude desktop app with this ${R.pr ? 'pull request' : 'document'} in the composer">Send to Claude</button></div>` : ''}
       <div class="status">${statusLines().map((l) => `<div class="${l.tone || ''}">${l.text}</div>`).join('')}</div>`;
     if (docked() && peek) applyGeometry(); // the window's height is known now: keep it on the screen
