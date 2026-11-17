@@ -34,7 +34,7 @@ async function health() {
     $('health').textContent = `Connected. Quick ${m.quick.model}/${m.quick.effort}, Thorough ${m.thorough.model}/${m.thorough.effort}, Select ${m.select.model}/${m.select.effort}.`;
   } else {
     $('health').className = 'bad';
-    $('health').textContent = `Not connected: ${r?.body?.error || 'no answer'}. Run host/install.sh in the gh-glossary folder, then reload the extension.`;
+    $('health').textContent = `Not connected: ${r?.body?.error || 'no answer'}. Run host/install.sh (Windows: host\\install.cmd) in the gh-glossary folder, then reload the extension.`;
   }
 }
 

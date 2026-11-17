@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { frames, reader } from './native.mjs';
 import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rules.mjs';
 import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
+import { resolveCommand, hookCommand, stopTree, folderName, samePath } from './platform.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, 'cache');
@@ -78,18 +79,24 @@ const READ_ONLY_TOOLS = [
 ];
 
 // ---------- storage (the rules are in host/store.mjs) ----------
-const dataDir = (repo) => path.join(CACHE, 'data', ...repo.split('/'));
-const glossaryFiles = (repo) => ({ repo: path.join(dataDir(repo), 'glossary.json'), org: path.join(CACHE, 'data', repo.split('/')[0], '_org', 'glossary.json') });
+const repoPath = (repo) => repo.split('/').map((s) => folderName(s));
+const dataDir = (repo) => path.join(CACHE, 'data', ...repoPath(repo));
+const glossaryFiles = (repo) => ({ repo: path.join(dataDir(repo), 'glossary.json'), org: path.join(CACHE, 'data', repoPath(repo)[0], '_org', 'glossary.json') });
 const pagesPath = (repo) => path.join(dataDir(repo), 'pages.json');
 
 // ---------- processes ----------
 const children = new Set();
 function run(cmd, args, { cwd, input, env, timeoutMs = 5 * 60_000 } = {}) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, env: env ? { ...process.env, ...env } : process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let p;
+    try {
+      const fullEnv = env ? { ...process.env, ...env } : process.env;
+      const c = resolveCommand(cmd, args, { env: fullEnv });
+      p = spawn(c.file, c.args, { cwd, env: fullEnv, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    } catch (e) { reject(e); return; }
     children.add(p);
     let out = '', err = '';
-    const t = setTimeout(() => { p.kill('SIGTERM'); reject(new Error(`${cmd} timed out`)); }, timeoutMs);
+    const t = setTimeout(() => { stopTree(p); reject(new Error(`${cmd} timed out`)); }, timeoutMs);
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (err += d));
     p.on('error', (e) => { clearTimeout(t); children.delete(p); reject(e); });
@@ -127,10 +134,11 @@ async function resolveBlob(repo, rest) {
 
 // ---------- checkout ----------
 async function checkout(repo, fetchRef) {
-  const dir = path.join(CACHE, 'repos', ...repo.split('/'));
+  const dir = path.join(CACHE, 'repos', ...repoPath(repo));
   if (!fs.existsSync(path.join(dir, '.git'))) {
     fs.mkdirSync(path.dirname(dir), { recursive: true });
-    await run('gh', ['repo', 'clone', repo, dir, '--', '--filter=blob:none', '-q'], { timeoutMs: 15 * 60_000 });
+    const longPaths = process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
+    await run('gh', ['repo', 'clone', repo, dir, '--', '--filter=blob:none', '-q', ...longPaths], { timeoutMs: 15 * 60_000 });
   }
   await run('git', ['-C', dir, 'fetch', '-q', 'origin', fetchRef], { timeoutMs: 10 * 60_000 });
   await run('git', ['-C', dir, 'checkout', '-q', '--detach', 'FETCH_HEAD']);
@@ -187,14 +195,13 @@ function enqueue(key, fn) {
   return job;
 }
 
-const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 // Every run gets the term-definition spec followed by its operation's skill as the appended system prompt, read-only
 // tools, and the guard hook (host/guard.mjs) that keeps it inside the checkout and the run folder.
 async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const { model, effort } = config.modes[op];
   const system = path.join(addDir, 'system.md');
   fs.writeFileSync(system, `${fs.readFileSync(SPEC_PATH, 'utf8')}\n\n---\n\n${fs.readFileSync(SKILLS[op], 'utf8')}`);
-  const settings = { hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `${shq(process.execPath)} ${shq(GUARD)}` }] }] } };
+  const settings = { hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(process.execPath, GUARD) }] }] } };
   const args = [
     '-p', '--model', model, '--effort', effort,
     '--output-format', 'json', '--json-schema', SCHEMAS[op],
@@ -365,9 +372,9 @@ function main() {
     try { reply = await handle(msg || {}); } catch (e) { reply = { code: 500, body: { error: e.message } }; }
     send({ id: msg?.id, ...reply });
   }, { onError: (e) => hostLog(`bad message: ${e.message}`) }));
-  const quit = () => { for (const c of children) c.kill('SIGTERM'); process.exit(0); };
+  const quit = () => { for (const c of children) stopTree(c); process.exit(0); };
   process.stdin.on('end', quit);
   process.on('SIGTERM', quit);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && samePath(path.resolve(process.argv[1]), fileURLToPath(import.meta.url))) main();

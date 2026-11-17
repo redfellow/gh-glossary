@@ -11,7 +11,7 @@ and its code, and are stored locally.
 
 ## Setup
 
-Runs on **macOS and Linux** with Chrome, Brave, Edge, Chromium or Arc. Windows is not supported.
+Runs on **macOS, Linux and Windows** with Chrome, Brave, Edge or Chromium (and Arc on macOS).
 
 ### 1. Install the tools
 
@@ -29,6 +29,15 @@ brew install node git gh
 ```bash
 sudo apt install git gh
 ```
+
+**Windows** (PowerShell, with [winget](https://learn.microsoft.com/windows/package-manager/winget/)):
+
+```powershell
+winget install OpenJS.NodeJS.LTS Git.Git GitHub.cli
+```
+
+Install `claude` with the native installer (`irm https://claude.ai/install.ps1 | iex`). An npm install
+also works. Claude Code on Windows needs Git for Windows, which the line above installs.
 
 ### 2. Log in to GitHub
 
@@ -51,6 +60,21 @@ git clone https://github.com/redfellow/gh-glossary.git ~/gh-glossary
 This tells your browsers how to start the host and that only this extension may talk to it. It registers
 for every supported browser that is installed. Run `host/install.sh status` to see where, and `uninstall`
 to remove it. Run `install` again after you move node, gh, git or claude.
+
+On **Windows**, clone into your user folder and run the Windows script instead, from PowerShell or
+Command Prompt:
+
+```powershell
+git clone https://github.com/redfellow/gh-glossary.git $HOME\gh-glossary
+```
+
+```powershell
+& $HOME\gh-glossary\host\install.cmd
+```
+
+It registers the host under your user in the registry (no administrator rights) for Chrome, and for
+Edge, Brave and Chromium when they are installed. `host\install.cmd status` and `uninstall` work as
+above.
 
 ### 4. Load the extension
 
@@ -229,3 +253,5 @@ cache/logs/                                host.log, plus one log and raw result
 - A pattern that is too broad underlines unrelated words. Regenerate the page it came from (the
   definition box says which), or edit the glossary JSON by hand.
 - Runs live in the host, which Chrome stops when it quits: a run going at that moment is lost.
+- Windows support is new: the host's Windows rules are covered by tests, but the install script and
+  runs have had far less use there than on macOS and Linux. Please open an issue if something fails.

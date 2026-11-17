@@ -41,3 +41,9 @@ test('Folder lines: owner/repo = /path, anything else is reported', () => {
   assert.deepEqual(folders, { 'octo-org/octo-repo': '/Users/me/octo', 'a/b': '/x y' });
   assert.deepEqual(bad, ['not a line', 'c/d = relative/path']);
 });
+
+test('Folder lines: Windows absolute paths are accepted, relative ones reported', () => {
+  const { folders, bad } = parseFolders('acme/widgets = C:\\code\\widgets\r\nacme/b = d:/src/b\nacme/c = \\\\server\\share\\c\nacme/d = code\\d\nacme/e = C:widgets\nacme/f = \\\\\\x');
+  assert.deepEqual(folders, { 'acme/widgets': 'C:\\code\\widgets', 'acme/b': 'd:/src/b', 'acme/c': '\\\\server\\share\\c' });
+  assert.deepEqual(bad, ['acme/d = code\\d', 'acme/e = C:widgets', 'acme/f = \\\\\\x']);
+});
