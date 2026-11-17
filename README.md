@@ -32,10 +32,111 @@ everything you need, start to finish.
    brew install node git gh
    ```
 
-2. Install Claude Code, then run `claude` once and sign in:
+2. Log in to GitHub, then check with `gh auth status` and `node --version`:
 
    ```bash
-   curl -fsSL https://claude.ai/install.sh | bash
+   gh auth login
+   ```
+
+3. Get the code:
+
+   ```bash
+   git clone https://github.com/redfellow/gh-glossary.git ~/gh-glossary
+   ```
+
+4. Register the host. This tells your browsers how to start it and that only this extension may talk
+   to it, for every supported browser that is installed:
+
+   ```bash
+   ~/gh-glossary/host/install.sh
+   ```
+
+   `~/gh-glossary/host/install.sh status` shows where it is registered, and `uninstall` removes it.
+   Run it again after you move node, gh, git or claude.
+
+5. Load the extension: open `chrome://extensions` (`brave://extensions` in Brave, `edge://extensions`
+   in Edge), turn on **Developer mode** (top right), click **Load unpacked** and pick
+   `~/gh-glossary/extension`.
+
+6. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
+   click **Quick**. The first run on a repo asks you to allow it (see
+   [Which repos Claude runs on](#which-repos-claude-runs-on)).
+
+**Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
+`chrome://extensions`. The host restarts with it.
+
+### Windows
+
+**Requirements**
+
+- Windows 10 or 11 with Chrome, Edge, Brave or Chromium
+- Node 22 or newer, Git for Windows, `gh` (Claude Code on Windows also needs Git for Windows)
+- The `claude` CLI, signed in
+- For **Send to Claude**: the Claude desktop app
+
+Run the commands below in PowerShell. No administrator rights are needed.
+
+**Steps**
+
+1. Install Node, Git and gh with [winget](https://learn.microsoft.com/windows/package-manager/winget/),
+   then open a new PowerShell window so they are on your PATH:
+
+   ```powershell
+   winget install OpenJS.NodeJS.LTS Git.Git GitHub.cli
+   ```
+
+2. Log in to GitHub, then check with `gh auth status` and `node --version`:
+
+   ```powershell
+   gh auth login
+   ```
+
+3. Get the code:
+
+   ```powershell
+   git clone https://github.com/redfellow/gh-glossary.git $HOME\gh-glossary
+   ```
+
+4. Register the host. This writes registry entries under your user that tell your browsers how to
+   start it and that only this extension may talk to it, for Chrome and for Edge, Brave and Chromium
+   when they are installed:
+
+   ```powershell
+   & $HOME\gh-glossary\host\install.cmd
+   ```
+
+   `& $HOME\gh-glossary\host\install.cmd status` shows where it is registered, and `uninstall` removes
+   it. Run it again after you move node, gh, git or claude.
+
+5. Load the extension: open `chrome://extensions` (`edge://extensions` in Edge, `brave://extensions`
+   in Brave), turn on **Developer mode**, click **Load unpacked** and pick the `gh-glossary\extension`
+   folder in your user folder.
+
+6. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
+   click **Quick**. The first run on a repo asks you to allow it (see
+   [Which repos Claude runs on](#which-repos-claude-runs-on)).
+
+**Updating:** run `git pull` in `$HOME\gh-glossary`, then click the reload icon on the extension in
+`chrome://extensions`. The host restarts with it.
+
+### Linux
+
+**Requirements**
+
+- Linux with Chrome, Chromium, Brave or Edge (these steps use Debian or Ubuntu)
+- Node 22 or newer, `git`, `gh`
+- The `claude` CLI, signed in
+- For **Send to Claude**: the Claude desktop app
+
+**Steps**
+
+1. Install Node 22 or newer from [nodejs.org](https://nodejs.org) or [nvm](https://github.com/nvm-sh/nvm).
+   The distro's `nodejs` package is usually too old.
+
+2. Install git and gh:
+
+   ```bash
+   sudo apt install git gh
    ```
 
 3. Log in to GitHub, then check with `gh auth status` and `node --version`:
@@ -65,125 +166,6 @@ everything you need, start to finish.
    `~/gh-glossary/extension`.
 
 7. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
-   click **Quick**. The first run on a repo asks you to allow it (see
-   [Which repos Claude runs on](#which-repos-claude-runs-on)).
-
-**Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
-`chrome://extensions`. The host restarts with it.
-
-### Windows
-
-**Requirements**
-
-- Windows 10 or 11 with Chrome, Edge, Brave or Chromium
-- Node 22 or newer, Git for Windows, `gh` (Claude Code on Windows also needs Git for Windows)
-- The `claude` CLI, signed in
-- For **Send to Claude**: the Claude desktop app
-
-Run the commands below in PowerShell. No administrator rights are needed.
-
-**Steps**
-
-1. Install Node, Git and gh with [winget](https://learn.microsoft.com/windows/package-manager/winget/),
-   then open a new PowerShell window so they are on your PATH:
-
-   ```powershell
-   winget install OpenJS.NodeJS.LTS Git.Git GitHub.cli
-   ```
-
-2. Install Claude Code, then run `claude` once and sign in (an npm install also works):
-
-   ```powershell
-   irm https://claude.ai/install.ps1 | iex
-   ```
-
-3. Log in to GitHub, then check with `gh auth status` and `node --version`:
-
-   ```powershell
-   gh auth login
-   ```
-
-4. Get the code:
-
-   ```powershell
-   git clone https://github.com/redfellow/gh-glossary.git $HOME\gh-glossary
-   ```
-
-5. Register the host. This writes registry entries under your user that tell your browsers how to
-   start it and that only this extension may talk to it, for Chrome and for Edge, Brave and Chromium
-   when they are installed:
-
-   ```powershell
-   & $HOME\gh-glossary\host\install.cmd
-   ```
-
-   `& $HOME\gh-glossary\host\install.cmd status` shows where it is registered, and `uninstall` removes
-   it. Run it again after you move node, gh, git or claude.
-
-6. Load the extension: open `chrome://extensions` (`edge://extensions` in Edge, `brave://extensions`
-   in Brave), turn on **Developer mode**, click **Load unpacked** and pick the `gh-glossary\extension`
-   folder in your user folder.
-
-7. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
-   click **Quick**. The first run on a repo asks you to allow it (see
-   [Which repos Claude runs on](#which-repos-claude-runs-on)).
-
-**Updating:** run `git pull` in `$HOME\gh-glossary`, then click the reload icon on the extension in
-`chrome://extensions`. The host restarts with it.
-
-### Linux
-
-**Requirements**
-
-- Linux with Chrome, Chromium, Brave or Edge (these steps use Debian or Ubuntu)
-- Node 22 or newer, `git`, `gh`
-- The `claude` CLI, signed in
-- For **Send to Claude**: the Claude desktop app
-
-**Steps**
-
-1. Install Node 22 or newer from [nodejs.org](https://nodejs.org) or [nvm](https://github.com/nvm-sh/nvm).
-   The distro's `nodejs` package is usually too old.
-
-2. Install git and gh:
-
-   ```bash
-   sudo apt install git gh
-   ```
-
-3. Install Claude Code, then run `claude` once and sign in:
-
-   ```bash
-   curl -fsSL https://claude.ai/install.sh | bash
-   ```
-
-4. Log in to GitHub, then check with `gh auth status` and `node --version`:
-
-   ```bash
-   gh auth login
-   ```
-
-5. Get the code:
-
-   ```bash
-   git clone https://github.com/redfellow/gh-glossary.git ~/gh-glossary
-   ```
-
-6. Register the host. This tells your browsers how to start it and that only this extension may talk
-   to it, for every supported browser that is installed:
-
-   ```bash
-   ~/gh-glossary/host/install.sh
-   ```
-
-   `~/gh-glossary/host/install.sh status` shows where it is registered, and `uninstall` removes it.
-   Run it again after you move node, gh, git or claude.
-
-7. Load the extension: open `chrome://extensions` (`brave://extensions` in Brave, `edge://extensions`
-   in Edge), turn on **Developer mode** (top right), click **Load unpacked** and pick
-   `~/gh-glossary/extension`.
-
-8. Try it: open any repository on github.com, hover the **gh-glossary** tab on the right edge and
    click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
