@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "description": "Definitions for the terms on GitHub pages, written by Claude on your machine.",
+  "license": "MIT",
   "scripts": {
     "test": "node --test",
     "icons": "node assets/build-icons.mjs"
