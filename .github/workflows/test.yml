@@ -1,0 +1,56 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  # The Windows install on a real Windows machine: register the host, start it through the launcher,
+  # run the guard hook in Git Bash, and start claude installed with npm and with the native installer.
+  windows-install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: claude from npm
+        run: npm install -g @anthropic-ai/claude-code
+      - name: install with npm claude
+        shell: cmd
+        run: host\install.cmd
+      - name: check with npm claude
+        run: node .github/scripts/windows-check.mjs
+      - name: status
+        shell: cmd
+        run: host\install.cmd status
+      - name: claude from the native installer
+        shell: pwsh
+        run: |
+          npm uninstall -g @anthropic-ai/claude-code
+          irm https://claude.ai/install.ps1 | iex
+          "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: install with native claude
+        shell: cmd
+        run: host\install.cmd
+      - name: check with native claude
+        run: node .github/scripts/windows-check.mjs
+      - name: uninstall
+        shell: pwsh
+        run: |
+          host\install.cmd uninstall
+          if (Test-Path 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\io.github.redfellow.gh_glossary') { throw 'still registered' }
+          if (Test-Path host\launcher.cmd) { throw 'launcher left behind' }

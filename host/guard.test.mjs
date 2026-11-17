@@ -81,3 +81,8 @@ test('As a hook: a refusal is a PreToolUse deny on stdout, an allowed call print
   const noRoots = call({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') }, cwd: co }, []);
   assert.equal(JSON.parse(noRoots.stdout).hookSpecificOutput.permissionDecision, 'deny', 'no roots: everything is refused');
 });
+
+test('Glob refuses .. written with backslashes too', () => {
+  const root = process.cwd();
+  assert.ok(checkTool('Glob', { path: root, pattern: 'a\\..\\..\\x' }, { roots: [root], cwd: root }));
+});

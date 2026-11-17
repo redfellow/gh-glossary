@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { samePath } from './platform.mjs';
 
 const GIT_SUBCOMMANDS = new Set(['log', 'show', 'diff', 'grep', 'blame', 'status', 'ls-files']);
 const GH_COMMANDS = new Set(['pr view', 'pr diff', 'pr checks', 'issue view']);
@@ -106,7 +107,7 @@ export function checkTool(name, input, { roots, repo, cwd }) {
   if (name === 'Glob') {
     if (!inside(where(input.path), roots)) return outside;
     const pat = String(input.pattern || '');
-    if (pat.split('/').includes('..') || (path.isAbsolute(pat) && !inside(pat.replace(/[*?[{].*$/, '') || '/', roots))) return outside;
+    if (pat.split(/[\\/]/).includes('..') || (path.isAbsolute(pat) && !inside(pat.replace(/[*?[{].*$/, '') || '/', roots))) return outside;
     return null;
   }
   if (name === 'Bash') return checkBash(input.command, repo);
@@ -131,4 +132,4 @@ function main() {
   });
 }
 
-if (process.argv[1] && real(process.argv[1]) === real(fileURLToPath(import.meta.url))) main();
+if (process.argv[1] && samePath(real(process.argv[1]), real(fileURLToPath(import.meta.url)))) main();

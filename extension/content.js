@@ -823,7 +823,7 @@
     return q;
   }
   const hostDown = (e) => e.code === 'down'
-    ? { text: `The gh-glossary host is not reachable (${esc(e.message)}). Run <code>host/install.sh</code> from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
+    ? { text: `The gh-glossary host is not reachable (${esc(e.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
     : { text: esc(e.message), tone: 'bad' };
   async function load() {
     const r = R; clearTimeout(pollT);

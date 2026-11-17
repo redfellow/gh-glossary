@@ -2,3 +2,5 @@ cache/
 config.json
 host/.launcher.sh
 .DS_Store
+host/launcher.cmd
+host/io.github.redfellow.gh_glossary.json
