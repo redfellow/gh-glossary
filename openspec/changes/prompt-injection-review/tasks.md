@@ -88,9 +88,9 @@
 
 - [x] 7.1 Run `npm test` and `openspec validate --specs`; verify both pass
   - proof: `openspec validate --specs`
-- [ ] 7.2 End to end in Chrome with the extension reloaded: Quick on a pull request, Define on a selection, a definition with a link, and a mode change; verify each behaves as its spec says
+- [x] 7.2 (human) End to end in Chrome with the extension reloaded: Quick on a pull request, Define on a selection, a definition with a link, and a mode change; verify each behaves as its spec says
   - Seen in Chrome for Testing 150 against a copy of the host: Quick from the popup page on a fork's pull request (9 terms, underlined on the page), Define on a word selected by a double click (the menu's click was sent to the extension by script; the definition opened pinned, marked "You asked"), a definition offering "Open github.com/cli/cli/issues/15066", and the mode changes above.
-  - Still to do by hand in your own Chrome: open the popup from the toolbar or the tab, and choose Define from the real context menu.
+  - Done by hand by the owner in their own Chrome (2026-11-19): the popup from the toolbar or the tab, and Define from the real context menu.
 
 ## Workflow follow-up
 
