@@ -41,8 +41,8 @@ still found ten weaker spots, one of them a way past the guard:
   reader's shell and its options expand nothing in them. An unquoted word starting with `=` is
   refused as well.
 - The run's prompt holds only text the host wrote; a file's path and ref go in a file in the run
-  folder. HTML comments outside code and invisible Unicode tag characters are removed from
-  descriptions, comments and reviews before a run gets them.
+  folder. HTML comments and invisible Unicode tag characters are removed from descriptions,
+  comments and reviews before a run gets them.
 - The `term-definition` spec gains a requirement that everything a run reads is data (spec version
   4), and runs can return a short `notes` text about what they did not follow, shown in the popup.
 - A `link` is kept only when it is on `github.com` under the repository's owner, in the host and in
@@ -69,15 +69,15 @@ still found ten weaker spots, one of them a way past the guard:
 ### Modified Capabilities
 
 - `run-sandbox`: one plain command at a time (the rebuilt command, `=`); what each sender may ask.
-- `define-runs`: what a run is given (prompt text, hidden text, owner terms); spend limits; new:
-  a run reports text it did not follow.
+- `define-runs`: what a run is given (owner terms); spend limits; new: the prompt holds only the
+  host's text, text the page hides is removed, a run reports text it did not follow.
 - `term-definition`: new requirement, text read during a run is data.
 - `glossary-store`: what one run may save; new: where a link may point.
 - `definition-popover`: how links are offered; provenance of a term from an outside page.
 
 ## Impact
 
-- `host/guard.mjs`, `host/host.mjs`, `host/store.mjs`, `host/rules.mjs`, `schema/*.schema.json`,
+- `host/guard.mjs`, `host/host.mjs`, `host/store.mjs`, the new `host/run.mjs`, `schema/*.schema.json`,
   `.claude/skills/gh-glossary-*/SKILL.md`, `extension/background.js`, `extension/popup.js`,
   `extension/popover.js`, `extension/content.js`, `README.md`, and their tests.
 - `openspec/specs/term-definition/spec.md` is the run's system prompt: the new requirement reaches
