@@ -57,7 +57,9 @@ folders, so a read elsewhere is refused even if the check does not run.
 
 ### Requirement: One plain command at a time
 A command SHALL be a single program with plain or quoted words. Pipes, `;`, `&&`, redirects, command
-substitution, variables, unquoted globs, backslashes and line breaks are refused.
+substitution, variables, unquoted globs, backslashes and line breaks are refused, and so is an
+unquoted word that starts with `=`. The command that runs SHALL be the one rebuilt from the words
+that were checked, each quoted, so the reader's shell and its options expand nothing in them.
 
 #### Scenario: Pipe
 - **WHEN** a run tries `git log | head`
@@ -66,6 +68,19 @@ substitution, variables, unquoted globs, backslashes and line breaks are refused
 #### Scenario: Quoted words
 - **WHEN** a run tries `git grep "foo bar"`
 - **THEN** the call is allowed
+
+#### Scenario: Command name written with =
+- **WHEN** a run tries `git diff =node =gh`
+- **THEN** the call is refused
+
+#### Scenario: Shell with extended globbing
+- **WHEN** the reader's shell has extended globbing on, the checkout holds a file named `-Osh x.sh`,
+  and a run tries `git grep ^zzz`
+- **THEN** git receives `^zzz` as its pattern, no file name takes its place, and `x.sh` does not run
+
+#### Scenario: Revision written with ~ and ^
+- **WHEN** a run tries `git log HEAD~3..HEAD^`
+- **THEN** the call is allowed and git receives that word as written
 
 ### Requirement: git cannot write, leave the repository or start a program
 A git command SHALL have its subcommand first and SHALL use only the options listed for that

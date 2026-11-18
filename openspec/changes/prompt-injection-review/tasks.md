@@ -2,10 +2,10 @@
 
 ## 1. Guard: the command that runs is the command that was checked
 
-- [ ] 1.1 Refuse an unquoted word that starts with `=` in `splitArgs` (`host/guard.mjs`); verify with a guard test that `git diff =node =gh` is refused and `git log --format=%h` is still allowed
-- [ ] 1.2 For an approved Bash call, print `updatedInput` with the command rebuilt from the checked words, each single-quoted, keeping the call's other input fields; verify with tests for a word containing `'`, an empty word, `^zzz`, `HEAD~3..HEAD^` and a quoted word with spaces
-- [ ] 1.3 Check headless with the real guard and the host's flags: `git diff --stat =node =gh` is refused; `git log HEAD~1..HEAD` runs; and, in a shell whose `~/.zshrc` sets `extendedglob`, `git grep ^zzz` in a checkout holding `-Osh x.sh` runs no script. Record the three results in the pull request
-- [ ] 1.4 Update the README Safety section and sync the `run-sandbox` delta into `openspec/specs/run-sandbox/spec.md`; verify with `openspec validate --specs`
+- [x] 1.1 Refuse an unquoted word that starts with `=` in `splitArgs` (`host/guard.mjs`); verify with a guard test that `git diff =node =gh` is refused and `git log --format=%h` is still allowed
+- [x] 1.2 For an approved Bash call, print `updatedInput` with the command rebuilt from the checked words, each single-quoted, keeping the call's other input fields; verify with tests for a word containing `'`, an empty word, `^zzz`, `HEAD~3..HEAD^` and a quoted word with spaces
+- [x] 1.3 Check headless with the real guard and the host's flags: `git diff --stat =node =gh` is refused; `git log HEAD~1..HEAD` runs, as the rebuilt command; and `git grep ^zzz` in a checkout holding `-Osh x.sh` runs no script when the reader's zsh sets `extendedglob`. Record the three results in the pull request
+- [x] 1.4 Update the README Safety section and sync the "One plain command at a time" requirement into `openspec/specs/run-sandbox/spec.md` (the sender requirement is synced in 6.10); verify with `openspec validate --specs`
 
 ## 2. What a run is given
 

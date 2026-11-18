@@ -317,8 +317,10 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
   (`Read`, `Grep`, `Glob`, `git log/show/diff/grep/blame/status/ls-files`, `gh pr view/diff/checks`,
   `gh issue view`). The guard hook (`host/guard.mjs`) also checks every call: files only inside the
   run's checkout and run folder (symlinks resolved), one plain command at a time (no pipes, `;`, `$()`,
-  redirects or globs), only the git and gh options on the guard's list for each command (so nothing
-  that writes files, reads files it names or starts a program, such as `--output` or `git grep -O`),
+  redirects or globs), which then runs rebuilt from the words the guard checked, each quoted, so your
+  shell and its options expand nothing in them, only the git and gh options on the guard's list for
+  each command (so nothing that writes files, reads files it names or starts a program, such as
+  `--output` or `git grep -O`),
   no absolute paths or `..` in git arguments, and `gh` only on the page's own repository, never
   `--web` or `--jq`. Any other tool is refused, even if your own settings allow it, and an error in
   the check is a refusal too. Network paths (`\\host\share`) are refused before anything touches

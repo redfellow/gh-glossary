@@ -46,7 +46,10 @@ reached the program unchanged. Quoted words are not expanded by bash or zsh unde
 quoted command name is not alias-expanded either.
 
 The guard also refuses an unquoted word that starts with `=`, so the one expansion that works in a
-default zsh does not depend on the rewrite being honoured.
+default zsh does not depend on the rewrite being honoured. The `extendedglob` case does not depend
+on it either while Claude Code keeps turning that option off (checked: with `setopt extendedglob`
+in the reader's `.zshenv`, the command's shell still had it off); the rewrite removes the guard's
+reliance on that.
 
 Alternatives: adding `^` and `~` to the refused characters breaks `HEAD~3` and `HEAD^`, which the
 spec allows and runs use often. An allowlist of characters for unquoted words has the same cost and
