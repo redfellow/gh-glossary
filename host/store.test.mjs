@@ -19,6 +19,7 @@ const term = (id, o = {}) => ({ id, term: id, category: 'domain', layer: 'repo',
 const ids = (f) => readJson(f, { terms: [] }).terms.map((t) => t.id).sort();
 const shown = (files, id) => mergedGlossary(files).find((t) => t.id === id);
 const quiet = () => {};
+const OWNER = { ownerAllowed: true }; // the reader allowed the whole owner, so runs may add owner terms
 
 test('Pattern checks: forms that can take exponential time are refused, the usual term forms are not', () => {
   for (const p of ['(?:a+)+', '(?:a|ab)*', '(?:\\w+\\s?){2,}', '\\b(?:x)\\1', 'a'.repeat(501)]) assert.ok(checkPattern(p), p);
@@ -83,7 +84,7 @@ test('Redefined in the same layer: the new term replaces the old one', () => {
 test('Redefined in the other layer: an owner term removes the copy in the run\'s repository', () => {
   const { widgets } = fresh();
   storeTerms(widgets, REPO, [term('relay', { def: 'repo meaning' })], META, quiet);
-  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet);
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet, OWNER);
   assert.deepEqual(ids(widgets.repo), []);
   assert.equal(shown(widgets, 'relay').def, 'owner meaning');
   assert.equal(shown(widgets, 'relay').layer, 'org');
@@ -92,14 +93,14 @@ test('Redefined in the other layer: an owner term removes the copy in the run\'s
 test('Another repository holds the id: its term is unchanged and still the one shown there', () => {
   const { widgets, gadgets } = fresh();
   storeTerms(gadgets, 'octo-org/gadgets', [term('relay', { def: 'gadgets meaning' })], META, quiet);
-  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet);
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet, OWNER);
   assert.equal(shown(gadgets, 'relay').def, 'gadgets meaning');
   assert.equal(shown(widgets, 'relay').def, 'owner meaning');
 });
 
 test('Repository term over an owner term: both exist and the repository\'s is shown', () => {
   const { widgets } = fresh();
-  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet);
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org', def: 'owner meaning' })], META, quiet, OWNER);
   storeTerms(widgets, REPO, [term('relay', { def: 'repo meaning' })], META, quiet);
   assert.deepEqual(ids(widgets.org), ['relay']); assert.deepEqual(ids(widgets.repo), ['relay']);
   assert.equal(shown(widgets, 'relay').def, 'repo meaning');
@@ -107,7 +108,7 @@ test('Repository term over an owner term: both exist and the repository\'s is sh
 
 test('Corrections: the repository layer first, then the owner layer; origin kept; unknown ids ignored', () => {
   const { widgets } = fresh();
-  storeTerms(widgets, REPO, [term('relay'), term('hub', { layer: 'org' })], META, quiet);
+  storeTerms(widgets, REPO, [term('relay'), term('hub', { layer: 'org' })], META, quiet, OWNER);
   const later = { ...META, origin: `${REPO}:issue-1`, definedAt: '2026-02-02T00:00:00.000Z', model: 'opus/high' };
   const n = applyCorrections(widgets, [
     { id: 'relay', def: 'fixed', reason: 'out of date' },
@@ -124,7 +125,7 @@ test('Corrections: the repository layer first, then the owner layer; origin kept
 // A page with two of its own terms (one in each layer), one the reader selected, and one from another page.
 function seeded() {
   const files = fresh().widgets;
-  storeTerms(files, REPO, [term('relay', { def: 'old relay' }), term('hub', { layer: 'org', def: 'old hub' })], META, quiet);
+  storeTerms(files, REPO, [term('relay', { def: 'old relay' }), term('hub', { layer: 'org', def: 'old hub' })], META, quiet, OWNER);
   storeTerms(files, REPO, [term('cache')], { ...META, selected: true }, quiet);
   storeTerms(files, REPO, [term('other')], { ...META, origin: `${REPO}:readme` }, quiet);
   return files;
@@ -192,7 +193,7 @@ test('Select runs are keyed by the whole text: a shared start gives two keys, th
 test('A run on one repository cannot rewrite owner terms another repository defined, unless the owner is allowed', async () => {
   const { widgets, gadgets } = fresh();
   const WMETA = { ...META, origin: 'octo-org/widgets:pr-1' };
-  storeTerms(widgets, REPO, [term('relay', { layer: 'org' }), term('broker', { layer: 'org', selected: true })], WMETA, quiet);
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org' }), term('broker', { layer: 'org', selected: true })], WMETA, quiet, OWNER);
   const evil = { ...META, origin: 'octo-org/gadgets:pr-9' }, logged = [];
   await defineWith(gadgets, { repo: 'octo-org/gadgets', origin: evil.origin, log: (s) => logged.push(s) }, async () => ({
     out: { terms: [term('relay', { layer: 'org', def: 'EVIL relay' })], corrections: [{ id: 'broker', def: 'EVIL broker', reason: 'x' }] }, meta: evil }));
@@ -205,4 +206,17 @@ test('A run on one repository cannot rewrite owner terms another repository defi
   await defineWith(gadgets, { repo: 'octo-org/gadgets', origin: evil.origin, ownerAllowed: true, log: quiet }, async () => ({
     out: { terms: [], corrections: [{ id: 'broker', def: 'Better broker', reason: 'x' }] }, meta: evil }));
   assert.equal(shown(widgets, 'broker').def, 'Better broker', 'with the owner allowed, corrections apply');
+});
+
+test('Allowing one repository adds no owner terms: a new owner-layer term is saved in the repository', () => {
+  const { widgets, gadgets } = fresh(); const logged = [];
+  storeTerms(widgets, REPO, [term('relay', { layer: 'org' })], META, (s) => logged.push(s));
+  assert.deepEqual(ids(widgets.org), []);
+  assert.deepEqual(ids(widgets.repo), ['relay']);
+  assert.equal(shown(gadgets, 'relay'), undefined, 'the owner\'s other repositories do not show it');
+  assert.match(logged.join('\n'), /only allowing the whole owner adds owner terms/);
+  storeTerms(widgets, REPO, [term('hub', { layer: 'org' })], META, quiet, OWNER);
+  assert.equal(shown(gadgets, 'hub').layer, 'org', 'with the owner allowed it is an owner term');
+  storeTerms(widgets, REPO, [term('hub', { layer: 'org', def: 'updated' })], META, quiet);
+  assert.equal(shown(gadgets, 'hub').def, 'updated', 'a run may still update an owner term its own repository defined');
 });

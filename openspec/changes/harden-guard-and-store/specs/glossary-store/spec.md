@@ -40,7 +40,7 @@ one per owner, shared by all of that owner's repositories, in a folder no reposi
 Nothing is stored anywhere else.
 
 #### Scenario: Org term from one repository
-- **WHEN** a run on `acme/widgets` returns a term with layer `org`
+- **WHEN** `acme` is an allowed owner and a run on `acme/widgets` returns a term with layer `org`
 - **THEN** it is saved in `acme`'s owner glossary and is seen on pages of `acme/gadgets` too
 
 #### Scenario: Repository named like the owner folder
@@ -59,9 +59,15 @@ over the old one.
 - **THEN** the run fails naming the file, and the file is unchanged
 
 ### Requirement: A run changes only owner terms it may
-A run SHALL change an owner-layer term, by saving the same id or by a correction, only if the term
-was first defined from the run's own repository or the reader allowed the whole owner. Otherwise the
-run's term is saved in its repository's glossary instead, and its correction is dropped and logged.
+A run SHALL add an owner-layer term only if the reader allowed the whole owner. It SHALL change an
+owner-layer term, by saving the same id or by a correction, only if the term was first defined from
+the run's own repository or the reader allowed the whole owner. Otherwise the run's term is saved in
+its repository's glossary instead, and its correction is dropped and logged.
+
+#### Scenario: New owner term from an allowed repository
+- **WHEN** only `acme/evil` is allowed and its run returns an `org` term with an id the owner
+  glossary does not have
+- **THEN** the term is saved in `acme/evil`'s glossary and is not seen on pages of `acme/widgets`
 
 #### Scenario: Owner term from another repository
 - **WHEN** only `acme/evil` is allowed, and its run returns an `org` term or a correction for an id

@@ -224,8 +224,9 @@ without a run.
 The first Quick, Thorough or Define on a repo asks in the popup: **Allow &lt;repo&gt;** or **Allow all of
 &lt;owner&gt;** (Cancel has the focus, so Enter cancels; closing the popup cancels too). For a Define from the
 context menu, the popup opens with the question. After you allow, the run you asked for starts.
-Allowing one repo lets its runs add owner terms but not change owner terms another repo defined;
-allowing the owner lets them. Your answer is stored in `config.json` and listed in the extension's
+Allowing one repo keeps its runs to that repo: an owner term they define is saved in the repo's own
+glossary, and owner terms another repo defined are left unchanged. Allowing the owner lets runs add
+and change owner terms. Your answer is stored in `config.json` and listed in the extension's
 options, where you can remove it. Stored glossaries stay readable either way.
 
 ## How it fits together
@@ -288,7 +289,8 @@ Two layers, both under `cache/data/` (not committed):
 
 - **Repo**: what a term means in that repository. `cache/data/<owner>/<repo>/glossary.json`
 - **Owner**: terms that mean the same across all repos of the organization or user.
-  `cache/data/<owner>/@org/glossary.json` (`_org/` before; moved on first use). Claude decides the layer; if both exist, the repo's meaning
+  `cache/data/<owner>/@org/glossary.json` (`_org/` before; moved on first use). Claude decides the layer,
+  but a run adds owner terms only when the whole owner is allowed; if both exist, the repo's meaning
   wins.
 
 Each definition shows its category and layer, whether it was checked at its source, the page and
