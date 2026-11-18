@@ -60,18 +60,28 @@ still leaves the next shell option to find.
 The host writes `target.json` to the run folder: `{ kind, number?, path?, ref?, readme? }`. The
 prompt names the operation, the repository (already validated), the kind of page with its number,
 the commit and the run folder. The three skills' Inputs sections say where the path and ref are.
-The prompt is built by a pure function so a test can give it a hostile page key.
+The prompt is built by a pure function (`runPrompt` in `host/run.mjs`, a new module for what a run
+is started with and given) so a test can give it a hostile page key.
 
 ### Hidden text is removed in the host
 
 `gatherPage` parses gh's JSON and passes every body (description, comments, reviews, replies)
 through one function before writing `page.json`:
 
-- HTML comments are removed, except inside fenced code blocks and inline code spans, where the page
-  shows them. An unterminated `<!--` removes the rest of the body, as GitHub hides it.
-- Unicode tag characters (U+E0000 to U+E007F) are removed everywhere.
+- HTML comments are removed wherever they are written. An unterminated `<!--` removes the rest of
+  the body, as GitHub hides it.
+- Unicode tag characters (U+E0000 to U+E007F) are removed everywhere, after the comments: a tag
+  character inside `-->` keeps a comment open on the page, and must keep it open here.
 
-The diff is left as it is: the page shows a diff's text literally.
+The first plan kept comments inside fenced code blocks and inline code spans, where the page shows
+them. Dropped while implementing: telling code from prose exactly takes a full Markdown parser, and
+each shortcut tried had a case GitHub reads the other way (a fence inside a list item or an HTML
+block, a backtick inside a tag's attribute), which would let a hidden comment through. Removing a
+comment that is shown costs a code example its comment; keeping one that is hidden defeats the
+rule.
+
+The diff is left as it is: the page shows a diff's text literally. Other hidden carriers (link
+reference definitions, HTML attributes, collapsed `<details>`) are not removed.
 
 ### "Data, not instructions" lives in the spec
 
@@ -102,7 +112,9 @@ and its `reason` at 300.
 
 `config.modes.<operation>.maxBudgetUsd` defaults to 2 for Quick and Select and 10 for Thorough,
 several times the dearest recorded run of each. The existing top-level `maxBudgetUsd`, when set,
-still applies to every operation.
+still applies to every operation. claude exits with an error at the limit and still prints its
+result (`subtype: error_max_budget_usd`); the host reads it, so the job's error says the spend
+limit was reached instead of "claude exited 1".
 
 ### Owner terms from other repositories
 
@@ -120,12 +132,15 @@ Whether a page is outside is worked out for every run, in every mode, and stored
 | Pull request | head is in a fork, or the opener is not OWNER, MEMBER or COLLABORATOR | `isCrossRepository` in the `gh pr view` call already made; `author_association` from `gh api repos/<repo>/issues/<n>` |
 | Issue | the opener is not OWNER, MEMBER or COLLABORATOR | the same REST call |
 | Discussion | the opener is not OWNER, MEMBER or COLLABORATOR | `authorAssociation` added to the GraphQL query |
-| File or home page | the ref is a commit id the default branch does not contain | `gh api repos/<repo>/compare/<sha>...<default branch>`: `ahead` or `identical` means contained |
+| File or home page | its address has a ref that is neither a branch nor a tag of the repository, and the commit checked out is not on the default branch | `gh api repos/<repo>/git/matching-refs/heads/<ref>` and `.../tags/<ref>`; then `gh api repos/<repo>/compare/<sha>...<default branch>`: `ahead` or `identical` means contained |
 
-A failed or empty lookup makes the page outside. Checked here: `gh pr view --json isCrossRepository`
-returns a boolean, and the REST call returns `OWNER` for a pull request of this repository. Not
-checked yet: the `authorAssociation` of comments and reviews in `gh pr view --json comments,reviews`
-(the pull request tried has none), and the compare call.
+A failed or empty lookup makes the page outside. Checked on real pages (cli/cli#15069, an issue and
+discussions of that repository): `isCrossRepository` is a boolean; comments and reviews in
+`gh pr view --json` and comments in `gh issue view --json` carry `authorAssociation`; so do a
+discussion, its comments and their replies through GraphQL; the REST call returns `NONE` for an
+outsider and `OWNER` for the owner; compare gives `diverged` for a fork's commit, `ahead` for an
+older commit of the default branch and `identical` for its tip, and fails for an unknown commit.
+A bot such as `github-actions` comes back as `CONTRIBUTOR`.
 
 The mode is `outside` in `config.json`: `off` (default), `limit-writes` or `outside-pages`. It is
 kept in the host because the host enforces it and because content scripts can read and write

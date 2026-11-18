@@ -196,7 +196,9 @@ On every PR page the tab title starts with `#<number>`, so the number survives n
 Every repository page gets a small **gh-glossary** tab on the right edge. It shows the number of known
 terms and a dot: blue pulsing while a run is going, red after an error (hover the tab for why). Drag it
 along the edge, or across the middle to the other side. Click it, or the gh-glossary toolbar icon, to
-open the controls in the toolbar popup. The popup names the repository and page it acts on.
+open the controls in the toolbar popup. The popup names the repository and page it acts on. Under the
+page's status it also shows what a run reported: text on the page that addressed the assistant and
+was not followed.
 
 ![The open panel on a pull request: Definitions switch, Quick and Thorough, Regenerate, Send to Claude](assets/screenshots/panel-pr.png)
 
@@ -212,6 +214,8 @@ open the controls in the toolbar popup. The popup names the repository and page 
 - **Send to Claude** (pull requests and Markdown documents) opens a new Claude Code session in the
   Claude desktop app with the PR or document in the composer, ready to read with `gh`. You press Enter.
   The text and the folder per repo are set in the extension's options.
+- **Outside contributors: Off | Limit writes | Outside pages** decides how pages by people who cannot
+  write to the repository are treated (see below). It applies to every repo.
 - Runs keep going when the popup closes; the tab's dot shows them.
 
 **Select text to define it.** Select a word or phrase anywhere on the page (code view included),
@@ -230,6 +234,32 @@ Allowing one repo keeps its runs to that repo: an owner term they define is save
 glossary, and owner terms another repo defined are left unchanged. Allowing the owner lets runs add
 and change owner terms. Your answer is stored in `config.json` and listed in the extension's
 options, where you can remove it. Stored glossaries stay readable either way.
+
+### Pages by outside contributors
+
+A GitHub page can be written by anyone. The host works out, for every run, whether the page is an
+**outside page**:
+
+- a pull request from a fork, where the README and docs the run reads are the author's;
+- a pull request, issue or discussion opened by someone who is not an owner, member or collaborator
+  of the repo (bots included);
+- a file or home page at a commit that is not on the default branch, a branch or a tag (a fork's
+  commit can be opened through the repo's own address).
+
+When GitHub does not say, the page counts as outside. Each term records whether its page was
+outside. **Outside contributors** in the popup then decides what that means, for every repo:
+
+| Mode | A run on an outside page | Terms from outside pages | Outsiders' comments on other pages |
+|---|---|---|---|
+| **Off** (default) | is treated like any other | show on every page of the repo | are read |
+| **Limit writes** | replaces no term another page defined, corrects nothing, adds no owner term | show on every page, marked "From an outside contributor's page", without a verified line | are read |
+| **Outside pages** | as Limit writes | show only on their own page | are left out of what the run reads; the popup says how many |
+
+With **Off**, an unmerged pull request from a fork can put its own definitions on every page of the
+repo, replace the ones you had, and have a Thorough run "correct" yours to match it; and whatever a
+run was told by an outsider's comment is saved like anything else. The mode is stored in
+`config.json` (`outside`) and only the popup changes it. Changing it applies at once to terms saved
+since this feature; older terms carry no mark and count as inside until their page is defined again.
 
 ## How it fits together
 
@@ -252,11 +282,13 @@ flowchart LR
 |---|---|---|
 | Content script | `extension/content.js` | Underlines, the tab, and where the definition frame goes. Uses CSS Custom Highlights, so it does not rewrite GitHub's DOM; nothing it draws can start a run. |
 | Definition frame | `extension/popover.html` | The definition box: an extension page in a frame next to the term, which scripts on the page cannot read or click into. |
-| Toolbar popup | `extension/popup.html` | Quick, Thorough, Regenerate, Send to Claude, the page's status, and the question whether Claude may run on a repo or owner: the only place the allowlist grows. |
+| Toolbar popup | `extension/popup.html` | Quick, Thorough, Regenerate, Send to Claude, the page's status, how outside pages are treated, and the question whether Claude may run on a repo or owner: the only place the allowlist grows. |
 | Service worker | `extension/background.js` | Holds the one connection to the host and decides which requests each sender may make. Starts runs for the popup and the context menu, asking to allow first when needed. Builds the Send to Claude link (`extension/link.js`). |
 | Shared code | `extension/shared.js` | Which GitHub page an address is, and where terms occur in a text. |
 | Options | `extension/options.html` | Host status, allowlist, Send to Claude templates and folders. |
 | Host | `host/host.mjs` | Checks out the right commit, gathers the page, runs Claude, stores results. Node + `gh`, no dependencies. |
+| Run rules | `host/run.mjs` | What a run is started with and given: configuration, arguments, the prompt, the page's text without what the page hides, and which pages are outside. |
+| Store rules | `host/store.mjs` | What a run may save and what a page is given: patterns, links, caps, layers and outside terms. |
 | Guard | `host/guard.mjs` | A hook on every tool call Claude makes during a run (see Safety). |
 | Spec | `openspec/specs/term-definition/spec.md` | What gets defined and how. Sent ahead of every run. |
 | Skills | `.claude/skills/gh-glossary-{quick,thorough,select}/SKILL.md` | The steps of each operation. |
@@ -269,11 +301,15 @@ flowchart LR
 | Key | Default | Meaning |
 |---|---|---|
 | `allow` | `{ "owners": [], "repos": [] }` | Where Claude may run. Filled in by the allow prompt. |
-| `modes.quick` | `sonnet` / `medium` | Model and effort for Quick. |
-| `modes.thorough` | `opus` / `high` | Model and effort for Thorough. |
-| `modes.select` | `sonnet` / `medium` | Model and effort for defining a selection. |
+| `modes.quick` | `sonnet` / `medium` / `2` | Model, effort and spend limit (`maxBudgetUsd`, US dollars) for Quick. |
+| `modes.thorough` | `opus` / `high` / `10` | The same for Thorough. |
+| `modes.select` | `sonnet` / `medium` / `2` | The same for defining a selection. |
 | `maxMinutes` | `30` | A run is stopped after this. |
-| `maxBudgetUsd` | unset | Optional spend limit per run (API billing). |
+| `maxBudgetUsd` | unset | One spend limit for every operation, in place of the three above. A run that reaches its limit fails and saves nothing. `0` in an operation means no limit. |
+| `outside` | `off` | How pages by outside contributors are treated: `off`, `limit-writes` or `outside-pages`. Set from the popup. |
+
+Each `modes` entry is an object, for example `"thorough": { "model": "opus", "effort": "high", "maxBudgetUsd": 10 }`;
+a key you leave out keeps its default.
 
 The host reads `config.json` when it starts: reload the extension after editing it.
 
@@ -335,12 +371,27 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
   and a run that ends without a mark (its hooks were off some other way) is discarded.
 - Only your user settings are loaded, so hooks or settings committed in the repo do not run. MCP
   servers and Chrome are off for the run. Web tools, Write and Edit are off.
-- The extension escapes everything Claude wrote before showing it. A definition's link must be
-  `https`, shows the whole address it opens, loses its query and fragment, and opens the site's front
-  page if its path is over 120 characters. Term patterns that could take long to match are refused,
-  and one run saves at most 200 terms. The page's script reads glossaries only for the repo its tab
-  shows. Send to Claude
-  percent-encodes the file path and branch it puts in the prompt.
+- **What a run reads is data.** The term-definition spec tells every run that the page, the repo's
+  files (`CLAUDE.md` included), the glossary and command output are text to define terms from, never
+  instructions, and to report text that addressed it; the popup shows that report. The prompt holds
+  only text the host wrote: a file's path and branch come from the page's address, so they are
+  handed over in a file. HTML comments and invisible Unicode tag characters are removed from
+  descriptions, comments and reviews, because you cannot see them on the page. Hidden text inside a
+  file in the checkout is not removed.
+- **What a run can leave behind is limited.** The extension escapes everything Claude wrote before
+  showing it. A definition's link is kept only on `github.com` under the repo's owner, shows the
+  whole address it opens, loses its query and fragment, and opens GitHub's front page if its path is
+  over 120 characters. Term patterns that could take long to match are refused. One run saves at
+  most 200 terms and 200 corrections, only the fields the spec names, with every field capped. A run
+  stops at a spend limit (2 US dollars for Quick and a selection, 10 for Thorough).
+- **Pages by outside contributors** are treated like any other unless you choose otherwise in the
+  popup: see "Pages by outside contributors" above for what each mode stops and what Off leaves
+  open.
+- The page's script reads glossaries only for the repo its tab shows.
+- **Send to Claude is outside all of this.** It opens an ordinary Claude Code session, without the
+  guard, and points it at the same pull request or document. The file path and branch it puts in
+  the prompt are percent-encoded, which keeps them from breaking the `gh` command, not from being
+  read.
 - One Claude run at a time; others queue.
 
 ## Tests
