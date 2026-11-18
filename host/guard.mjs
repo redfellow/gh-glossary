@@ -278,6 +278,20 @@ export function decide(raw, env) {
   }
 }
 
+// Leaves a mark for the host: one line per call checked, appended to the file GHG_MARK names. The
+// host gives each run a new, unguessable path outside the run's folders and discards a run that ends
+// without a mark (every run calls at least StructuredOutput), so a run whose guard was turned off by
+// settings the host cannot read never reaches a page.
+export function leaveMark(file, toolName) {
+  if (typeof file !== 'string' || !path.isAbsolute(file)) return;
+  try { fs.appendFileSync(file, `${typeof toolName === 'string' ? toolName.slice(0, 100) : '?'}\n`); } catch {}
+}
+
+// Whether the guard left a mark in file during a run.
+export function guardRan(file) {
+  try { return fs.readFileSync(file, 'utf8').trim().length > 0; } catch { return false; }
+}
+
 // Claude Code treats a hook that exits with any code but 2 and prints no decision as a non-blocking
 // error and lets the call run, so a crash outside decide() exits 2, which blocks the call.
 function main() {
@@ -288,6 +302,8 @@ function main() {
   process.stdin.on('data', (d) => (raw += d));
   process.stdin.on('error', block);
   process.stdin.on('end', () => {
+    let toolName; try { toolName = JSON.parse(raw)?.tool_name; } catch {}
+    leaveMark(process.env.GHG_MARK, toolName);
     const reason = decide(raw, process.env);
     if (reason) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }), () => process.exit(0));

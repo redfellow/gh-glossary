@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { splitArgs, checkBash, checkTool, decide } from './guard.mjs';
+import { splitArgs, checkBash, checkTool, decide, guardRan } from './guard.mjs';
 
 const REPO = 'octo-org/octo-repo';
 const ok = (cmd) => assert.equal(checkBash(cmd, REPO), null, cmd);
@@ -163,4 +163,16 @@ test('A tool input of the wrong type, or anything that throws while checking, is
   const r = spawnSync(process.execPath, [guard], { input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: {} }, cwd: co }), env: { ...process.env, ...env }, encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('As a hook: every call it checks leaves a mark in GHG_MARK, refused or not', () => {
+  const guard = fileURLToPath(new URL('./guard.mjs', import.meta.url));
+  const co = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-mark-'));
+  const mark = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-marks-')), 'run.log');
+  assert.equal(guardRan(mark), false, 'no file: the guard did not run');
+  const call = (ev) => spawnSync(process.execPath, [guard], { input: JSON.stringify(ev), env: { ...process.env, GHG_ROOTS: JSON.stringify([co]), GHG_REPO: REPO, GHG_MARK: mark }, encoding: 'utf8' });
+  call({ tool_name: 'StructuredOutput', tool_input: {}, cwd: co });
+  call({ tool_name: 'Read', tool_input: { file_path: '/etc/hosts' }, cwd: co });
+  assert.equal(guardRan(mark), true);
+  assert.deepEqual(fs.readFileSync(mark, 'utf8').trim().split('\n'), ['StructuredOutput', 'Read']);
 });

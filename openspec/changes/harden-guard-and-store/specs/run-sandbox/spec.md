@@ -135,7 +135,7 @@ extension sends gets an answer within two minutes.
 ### Requirement: A run does not start without its check
 The host SHALL turn hooks on for every run, over the reader's own settings. When managed settings
 turn hooks off or allow only managed hooks, the host SHALL NOT start the run and the page SHALL say
-why.
+why. A run whose check never ran SHALL have its result discarded before anything is stored.
 
 #### Scenario: Reader turned hooks off
 - **WHEN** the reader's user settings set `disableAllHooks`
@@ -144,3 +144,7 @@ why.
 #### Scenario: Organization allows only managed hooks
 - **WHEN** a managed settings file sets `allowManagedHooksOnly` or `disableAllHooks`
 - **THEN** no run starts, and the job error names the setting
+
+#### Scenario: Hooks off by a setting the host cannot read
+- **WHEN** an MDM profile turns hooks off and a run finishes with a result
+- **THEN** the result is discarded, nothing is stored, and the job error says the guard did not run

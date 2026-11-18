@@ -322,7 +322,8 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
   the check is a refusal too. File reading is also limited to the run's two folders by the run's own
   tool permissions, so it stays there even without the guard.
 - The run turns hooks on over your own `disableAllHooks`. If managed settings turn hooks off or allow
-  only managed hooks, no run starts and the page says why.
+  only managed hooks, no run starts and the page says why. The guard also marks every call it checks,
+  and a run that ends without a mark (its hooks were off some other way) is discarded.
 - Only your user settings are loaded, so hooks or settings committed in the repo do not run. MCP
   servers and Chrome are off for the run. Web tools, Write and Edit are off.
 - The extension escapes everything Claude wrote before showing it. A definition's link must be

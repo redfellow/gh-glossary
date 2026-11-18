@@ -33,6 +33,7 @@
 - [x] 5.2 Check `git log -L` values like a `rev:path` and their file through the symlink check; fix the comment that said no option takes a file; verify with tests
 - [x] 5.3 Allow file reading only as `Read(//<root>/**)` for the two roots; set `disableAllHooks: false` in the run's settings; refuse to start when managed settings disable hooks or allow only managed hooks; verify with tests and headless `claude -p` runs (scoped rules deny Read, Grep and Glob outside the roots without the hook; the flag's `false` wins over a lower-level `true`; with the host's flags the guard denied a read outside and allowed `git log`)
 - [x] 5.4 Save a new owner-layer term in the repository glossary unless the owner is allowed; update `README.md`; verify with tests
+- [x] 5.5 Have the guard mark every call it checks in a per-run file (`GHG_MARK`) outside the run's folders, and discard a run's result when no mark was left; verify with a test and headless runs with hooks on and off
 
 ## Workflow follow-up
 

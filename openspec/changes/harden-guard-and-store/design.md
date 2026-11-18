@@ -49,7 +49,14 @@ not a managed one). Two changes keep a run safe then:
   instead of bare `Read`, `Grep` and `Glob`; Claude Code applies Read rules to Grep and Glob too
   (checked with a headless run without the hook: Read, Grep and Glob outside the roots were denied,
   inside allowed). The `Bash(git …:*)` rules cannot be limited to paths, so without the guard git could
-  still name a file outside; the managed-settings check is what covers that.
+  still name a file outside.
+- For settings the host cannot read, the guard leaves a mark: it appends the tool name to the file
+  `GHG_MARK` names for every call it checks. The host gives each run a new random path under
+  `cache/guard-marks/`, outside the run's folders, and discards the run's result when the file is
+  empty. Every run calls at least `StructuredOutput`, which passes through the hook, so a guarded run
+  always leaves a mark (checked headless: a run with no other tool calls left `StructuredOutput`; with
+  `disableAllHooks: true` the run returned its reply and left nothing). What an unguarded run read
+  never reaches a page; it can still have been read on the reader's machine.
 
 ## Slow patterns
 
