@@ -56,8 +56,7 @@
     html.ghl-hover-term, html.ghl-hover-term * { cursor: help !important; }
     ::highlight(ghl-term) { text-decoration: underline dotted var(--fgColor-accent, #0969da); text-decoration-thickness: 1.5px; }
     ::highlight(ghl-active) { background-color: var(--bgColor-accent-muted, rgba(84,174,255,.2)); }
-    ::highlight(ghl-pending) { background-color: color-mix(in srgb, var(--bgColor-attention-emphasis, #9e6a03) 60%, transparent); text-decoration: underline wavy var(--fgColor-attention, #9a6700); text-decoration-thickness: 1.5px; }
-    ::highlight(ghl-pending-dim) { background-color: color-mix(in srgb, var(--bgColor-attention-emphasis, #9e6a03) 22%, transparent); text-decoration: underline wavy var(--fgColor-attention, #9a6700); text-decoration-thickness: 1.5px; }`);
+    ::highlight(ghl-pending) { background-color: color-mix(in srgb, var(--bgColor-attention-emphasis, #9e6a03) 40%, transparent); text-decoration: underline wavy var(--fgColor-attention, #9a6700); text-decoration-thickness: 1.5px; }`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 
   // ---------- the tab and the definition frame, in a closed shadow root ----------
@@ -394,22 +393,12 @@
     return { text: s.text, context: s.context, nwo: pageNwo() };
   }
 
-  // Words waiting for or being defined pulse between two highlights (steady with reduced motion).
-  let pulseT = 0, pulseOn = false;
-  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  // Words waiting for or being defined are marked with a steady highlight until their run ends.
   function renderPending() {
-    clearInterval(pulseT); pulseT = 0;
     if (!window.CSS?.highlights) return;
-    CSS.highlights.delete('ghl-pending'); CSS.highlights.delete('ghl-pending-dim');
+    CSS.highlights.delete('ghl-pending');
     const ranges = selJobs.map((j) => j.range).filter((r) => r && r.startContainer.isConnected);
-    if (!ranges.length) return;
-    const show = () => {
-      pulseOn = !pulseOn;
-      CSS.highlights.delete(pulseOn ? 'ghl-pending-dim' : 'ghl-pending');
-      CSS.highlights.set(pulseOn ? 'ghl-pending' : 'ghl-pending-dim', new Highlight(...ranges));
-    };
-    show();
-    if (!calm.matches) pulseT = setInterval(show, 700);
+    if (ranges.length) CSS.highlights.set('ghl-pending', new Highlight(...ranges));
   }
 
   let selTick = 0;
