@@ -21,11 +21,18 @@
 
 - [x] 4.1 Close the guard's option desync (`git log -U --output=x`): next-word values may not start with `-`, `-U`/`--unified`/`--format`/`--word-diff-regex`/`--diff-filter` take attached values only, and write/read/run options are refused in any position; resolve symlinks in git paths; verify with tests and a headless `claude -p` run
 - [x] 4.2 Refuse more than two repeats, two repeats that can meet, and patterns that can match empty within text; drop a term that matches empty on the page; build the term table without a prototype; verify no stored pattern is refused
-- [x] 4.3 Ask for consent in an extension window (`allow.html`), remove `/api/allow` from the content script's routes, and require a real click on Quick, Thorough, Regenerate and Define; verify by source tests
+- [x] 4.3 Ask for consent in the extension instead of the page (first a window, `allow.html`; since `display-only-page-view` the toolbar popup, and `allow.html`/`allow.js` are gone), remove `/api/allow` from the content script's routes, and require a real click on Quick, Thorough, Regenerate and Define; verify by source tests
 - [x] 4.4 Percent-encode the path and ref in Send to Claude; label links with their host and drop query and fragment; open the claude:// link from a closed shadow root; keep local folders out of job errors
 - [x] 4.5 Let a run change an owner term only when it came from the run's repository or the owner is allowed; move `_org` only when it is an owner glossary
 - [x] 4.6 Cap blob addresses and lookups and remember misses; skip the rest of an oversized message; time out host requests after two minutes; treat a malformed `%` escape as an unhandled page
 - [x] 4.7 (Replaced by `display-only-page-view`, which asks in the toolbar popup; tested there in Chrome 157.) In Chrome: the allow window opens from Quick on a repository not allowed, Enter cancels, "Allow" starts the run; a scripted click on Quick from the page console starts nothing
+
+## 5. Third review
+
+- [x] 5.1 Run the guard's check in `decide()`, which turns any exception into a deny; refuse a tool input that is not an object; exit 2 on a crash outside it; verify with tests for `file_path: {}`, `path: [...]` and the hook process
+- [x] 5.2 Check `git log -L` values like a `rev:path` and their file through the symlink check; fix the comment that said no option takes a file; verify with tests
+- [x] 5.3 Allow file reading only as `Read(//<root>/**)` for the two roots; set `disableAllHooks: false` in the run's settings; refuse to start when managed settings disable hooks or allow only managed hooks; verify with tests and headless `claude -p` runs (scoped rules deny Read, Grep and Glob outside the roots without the hook; the flag's `false` wins over a lower-level `true`; with the host's flags the guard denied a read outside and allowed `git log`)
+- [x] 5.4 Save a new owner-layer term in the repository glossary unless the owner is allowed; update `README.md`; verify with tests
 
 ## Workflow follow-up
 

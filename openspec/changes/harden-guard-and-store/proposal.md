@@ -46,9 +46,14 @@ and smaller issues in links, blob lookups, message framing and URL decoding.
 - The host decodes process output as a UTF-8 stream; reply parts are sized for 3 bytes per character;
   file page keys may not contain control characters.
 - The page redraws when any stored term changes; a Select run whose job is lost says so.
-- Consent moves to an extension window; runs start only from real clicks.
+- Consent moves out of the page into the extension (first a separate window, then the toolbar popup
+  in `display-only-page-view`); runs start only from real clicks.
 - Send to Claude percent-encodes paths and refs; links show their host and lose query and fragment.
-- A run changes owner terms only from its own repository, unless the owner is allowed.
+- A run adds owner terms only when the whole owner is allowed, and changes owner terms only from its
+  own repository unless the owner is allowed.
+- Any error in the guard is a refusal; `git log -L` values are checked as paths.
+- A run's file reading is limited to its roots by its tool permissions too, its hooks are turned on
+  over the reader's settings, and no run starts when managed settings turn hooks off.
 
 ## Capabilities
 
@@ -65,8 +70,9 @@ and smaller issues in links, blob lookups, message framing and URL decoding.
 ## Impact
 
 - `host/guard.mjs`, `host/store.mjs`, `host/host.mjs`, `host/native.mjs`, `host/rules.mjs`,
-  `extension/content.js`, `extension/background.js`, `extension/link.js`, new `extension/allow.html`
-  and `extension/allow.js`, `README.md`, and their tests.
+  `host/platform.mjs`, `extension/content.js`, `extension/background.js`, `extension/link.js`,
+  `README.md`, and their tests. (The consent window `extension/allow.html` and `allow.js` added here
+  were removed again by `display-only-page-view`, which asks in the toolbar popup.)
 - Stored data: `cache/data/<owner>/_org/glossary.json` is moved to `@org/` the first time that owner's
   glossary is read or written.
 - Runs that used options now unlisted are refused with a message naming the option; Claude retries
