@@ -6,10 +6,12 @@
 // Claude Code calls it with the tool call as JSON on stdin. Roots and repo come from the environment
 // the host sets: GHG_ROOTS (JSON array of absolute folders) and GHG_REPO (owner/repo).
 // A refusal is printed as a PreToolUse "deny" decision. A Bash command it accepts is printed as
-// "allow": the run's --allowedTools has no Bash rules, so without this guard (hooks turned off) only
-// the commands Claude Code itself counts as read-only run, and none that write, start a program or
-// print the environment. Read, Grep and Glob it accepts fall through to the run's Read(//root/**)
-// rules. Unknown tools, unknown options and input that does not parse are refused.
+// "allow" together with the command to run instead: the checked words, each quoted, so the reader's
+// shell expands nothing in them. The run's --allowedTools has no Bash rules, so without this guard
+// (hooks turned off) only the commands Claude Code itself counts as read-only run, and none that
+// write, start a program or print the environment. Read, Grep and Glob it accepts fall through to
+// the run's Read(//root/**) rules. Unknown tools, unknown options and input that does not parse are
+// refused.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -108,13 +110,20 @@ export function splitArgs(cmd) {
     }
     if (ch === "'" || ch === '"') { q = ch; has = true; continue; }
     if (ch === ' ' || ch === '\t') { if (has) { args.push(cur); cur = ''; has = false; } continue; }
-    if (';&|<>()$`\\\n\r{}*?[]!#'.includes(ch) || (ch === '~' && !has)) return null; // ~ only expands at the start of a word
+    // ~ and = only expand at the start of a word (zsh turns =name into the path of that command).
+    if (';&|<>()$`\\\n\r{}*?[]!#'.includes(ch) || ((ch === '~' || ch === '=') && !has)) return null;
     cur += ch; has = true;
   }
   if (q) return null;
   if (has) args.push(cur);
   return args;
 }
+
+// The command line Claude Code is given to run in place of the one the run wrote: the same words,
+// each in single quotes. A shell expands nothing inside single quotes whatever its options are, so
+// what runs is what was checked. Unquoted, zsh would turn ^ and ~ into glob operators when
+// extendedglob is set, and file names from the checkout would take a word's place.
+export const quoted = (args) => args.map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(' ');
 
 function nextValue(args, i, opt) {
   if (i + 1 >= args.length) return { error: `option ${opt} needs a value.` };
@@ -179,7 +188,7 @@ export function staysInside(arg) {
 // repository (outlink -> /etc) would otherwise let outlink/hosts name a file outside the checkout.
 export function checkBash(cmd, repo, ctx = null) {
   const a = splitArgs(cmd);
-  if (!a || !a.length) return 'Run one plain command: no pipes, redirects, ;, &&, $(), globs or backslashes.';
+  if (!a || !a.length) return 'Run one plain command: no pipes, redirects, ;, &&, $(), globs or backslashes, and a word that starts with = or ~ in quotes.';
   const bad = never(a.slice(1));
   if (bad) return `option ${bad.split('=')[0]} is not allowed.`;
   if (a[0] === 'git') {
@@ -321,13 +330,16 @@ function main() {
   process.stdin.on('data', (d) => (raw += d));
   process.stdin.on('error', block);
   process.stdin.on('end', () => {
-    let toolName; try { toolName = JSON.parse(raw)?.tool_name; } catch {}
+    let ev; try { ev = JSON.parse(raw); } catch {}
+    const toolName = ev?.tool_name;
     leaveMark(process.env.GHG_MARK, toolName);
     const reason = decide(raw, process.env);
     const decision = reason ? 'deny' : toolName === 'Bash' ? 'allow' : null;
     if (decision) {
       const why = reason || 'gh-glossary guard: a read-only command on the checkout.';
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: why } }), () => process.exit(0));
+      // An approved command passed checkBash, so it splits; if it ever did not, quoted() throws and the call is blocked.
+      const updatedInput = decision === 'allow' ? { updatedInput: { ...ev.tool_input, command: quoted(splitArgs(ev.tool_input.command)) } } : {};
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: why, ...updatedInput } }), () => process.exit(0));
     } else process.exit(0);
   });
 }
