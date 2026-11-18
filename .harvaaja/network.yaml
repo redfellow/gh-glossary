@@ -1,0 +1,8 @@
+# Hosts the workspace's agents may reach. Nothing else is allowed.
+# Stack found: Node (npm) only. No other registry is needed.
+allow:
+  - github.com               # git fetch and push; gh reads pull requests and issues (host/host.mjs runs gh)
+  - api.github.com           # the GitHub API that gh calls
+  - codeload.github.com      # repository archives
+  - '*.githubusercontent.com' # raw files and release assets
+  - registry.npmjs.org       # npm packages: the install check and the outdated sweep (no packages listed today)

@@ -1,0 +1,48 @@
+# Checks for gh-glossary, proposed by härvääjä's setup. Each one is for a person to review.
+#
+# What the repository is: one package.json, no dependencies, no lockfile, Node 22 in CI. There is no
+# linter and no type checker configured. The tests are node:test files (*.test.mjs) in assets/,
+# extension/ and host/, run by `npm test`. They stub gh, git and claude on PATH and use temp folders;
+# nothing needs a browser, Docker, a local service or the network. So every check runs in the sandbox,
+# and only install and the sweeps reach the registry.
+
+setup:
+  check: install
+  clean: [node_modules]   # npm install should create nothing; removed if the install fails
+
+checks:
+  # The install check comes first. Nothing is downloaded today because package.json lists no
+  # dependencies. It confirms Node 22 or newer (the test runner's file globs need Node 21+) and runs
+  # npm install with --no-package-lock, so no lockfile gets written. Once dependencies and a
+  # package-lock.json exist, change this to `npm ci`, which installs exactly what the lockfile says.
+  - name: install
+    run: node -e "if (+process.versions.node.split('.')[0] < 22) { console.error('Node 22 or newer is needed'); process.exit(1) }" && npm install --no-package-lock --no-audit --no-fund
+    network: [registry.npmjs.org]
+    timeoutSeconds: 600
+
+  # Syntax only, not style or types: no linter or type checker is configured. Every tracked .js and
+  # .mjs file must parse. Browser scripts in extension/ are plain ES modules, so node --check reads
+  # them the same way.
+  - name: syntax
+    run: git ls-files -z '*.js' '*.mjs' | xargs -0 -n1 node --check
+    stage: every
+
+  # The whole suite, about 14 files. Fast enough for every round. To run one file, a planner or
+  # implementer runs `node --test <file>` directly: `npm test` always runs all of them.
+  - name: unit
+    run: npm test
+    stage: every
+
+  # Weekly Dependency sweep input. package.json has no dependencies, so this prints nothing and exits
+  # 0 today. npm outdated exits 1 when it finds outdated packages, so read the output, not just the
+  # exit code.
+  - name: outdated
+    run: npm outdated
+    role: outdated
+    stage: manual
+    network: [registry.npmjs.org]
+
+  # No audit check is proposed. Weekly Security sweep input would be `npm audit`, but npm audit needs
+  # a package-lock.json, and the repository has neither a lockfile nor dependencies, so it would fail
+  # on every run. When a lockfile exists, add: name audit, run `npm audit`, role audit, stage manual,
+  # network [registry.npmjs.org].
