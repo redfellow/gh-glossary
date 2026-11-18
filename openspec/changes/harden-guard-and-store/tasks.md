@@ -15,7 +15,7 @@
 
 - [x] 3.1 Decode process output as a UTF-8 stream; size reply parts for 3 bytes per character; refuse control characters in file page keys; verify with native-messaging tests
 - [x] 3.2 Redraw when any stored term changes; report a lost Select job as lost; verify `npm test` passes
-- [ ] 3.3 In Chrome on one allowed page: run Thorough where it only corrects and see the corrections without a reload; run Quick on an owner with an existing `_org` glossary and see its terms after the move (second half done 2026-11-18 in Chrome: `redfellow/_org/glossary.json` moved to `@org/` unchanged on the first page load and its terms were underlined; the Thorough half is still open) (second half done 2026-11-18 in Chrome: `redfellow/_org/glossary.json` was moved to `@org/` unchanged on the first page load and its terms were underlined; the Thorough half is still open)
+- [ ] 3.3 In Chrome on one allowed page: run Thorough where it only corrects and see the corrections without a reload; run Quick on an owner with an existing `_org` glossary and see its terms after the move (second half done 2026-11-18 in Chrome: `redfellow/_org/glossary.json` was moved to `@org/` unchanged on the first page load and its terms were underlined; the Thorough half is still open)
 
 ## 4. Second review
 
