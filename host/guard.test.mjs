@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { splitArgs, checkBash, checkTool } from './guard.mjs';
+import { splitArgs, checkBash, checkTool, decide } from './guard.mjs';
 
 const REPO = 'octo-org/octo-repo';
 const ok = (cmd) => assert.equal(checkBash(cmd, REPO), null, cmd);
@@ -138,5 +138,29 @@ test('git paths through a symbolic link out of the checkout are refused', () => 
   for (const c of ['git diff -- outlink/secret', 'git log -- outlink', 'git grep -n foo -- outlink/secret', 'git diff HEAD outlink/secret']) {
     assert.ok(checkTool('Bash', { command: c }, env), c);
   }
+  assert.ok(checkTool('Bash', { command: 'git log -L 1,5:outlink/secret' }, env), 'git log -L through the link');
   for (const c of ['git log -1', 'git diff HEAD~1 -- src', 'git show HEAD:outlink']) assert.equal(checkTool('Bash', { command: c }, env), null, c);
+});
+
+test('git log -L names a file: its file stays inside the checkout like any path', () => {
+  for (const c of ['git log -L 1,1:../secret.txt', 'git log -L1,1:/etc/hosts', 'git log -L :main:../x.c', 'git show -L 1,2:a/../../b', 'git log -L 1,1:C:/x']) no(c);
+  for (const c of ['git log -L 1,20:src/a.js', 'git log -L:main:src/a.c', 'git blame -L 1,20 a.js', 'git blame -L :main a.c']) ok(c);
+});
+
+test('A tool input of the wrong type, or anything that throws while checking, is refused', () => {
+  const co = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-types-'));
+  const env = { GHG_ROOTS: JSON.stringify([co]), GHG_REPO: REPO };
+  for (const input of [{ file_path: {} }, { file_path: ['a'] }, { file_path: 5 }, 'x', ['/etc/hosts']]) {
+    assert.ok(decide(JSON.stringify({ tool_name: 'Read', tool_input: input, cwd: co }), env), JSON.stringify(input));
+  }
+  for (const [tool, input] of [['Grep', { path: ['..'] }], ['Glob', { path: {}, pattern: '*' }], ['Bash', { command: ['git', 'log'] }]]) {
+    assert.ok(decide(JSON.stringify({ tool_name: tool, tool_input: input, cwd: co }), env), tool);
+  }
+  assert.ok(decide(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') } }), { ...env, GHG_ROOTS: '{"a":1}' }), 'roots that are not a list');
+  assert.equal(decide(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') }, cwd: co }), env), null, 'a good call still passes');
+  // As a hook: the refusal is a deny, never a crash that Claude Code would let through.
+  const guard = fileURLToPath(new URL('./guard.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [guard], { input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: {} }, cwd: co }), env: { ...process.env, ...env }, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'deny');
 });

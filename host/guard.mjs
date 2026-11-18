@@ -184,11 +184,14 @@ export function checkBash(cmd, repo, ctx = null) {
     if (!spec) return `Only git ${Object.keys(GIT).join(', ')} are allowed, with the subcommand first (no -C or -c).`;
     const r = parseOptions(a.slice(2), spec);
     if (r.error) return `git ${a[1]}: ${r.error}`;
-    // Operands are revisions and paths; git grep's first one is the pattern unless -e gave it. No
-    // allowed option takes a file, so option values are not paths.
+    // Operands are revisions and paths; git grep's first one is the pattern unless -e gave it. The one
+    // allowed option that names a file is -L: git log -L <range>:<file> (git blame -L takes only a
+    // range). Its value is checked like a rev:path, and its file like any other path.
     const paths = a[1] === 'grep' && !r.values.some(([opt]) => opt === 'e') ? r.operands.slice(1) : r.operands;
-    if (!paths.every(staysInside)) return 'git may only name files inside the checkout: no absolute paths or "..".';
-    if (ctx && !paths.filter((x) => !x.includes(':')).every((x) => inside(path.resolve(ctx.cwd || ctx.roots[0], x), ctx.roots))) {
+    const lines = r.values.filter(([opt]) => opt === 'L').map(([, v]) => v);
+    if (![...paths, ...lines].every(staysInside)) return 'git may only name files inside the checkout: no absolute paths or "..".';
+    const lineFiles = a[1] === 'blame' ? [] : lines.filter((v) => v.includes(':')).map((v) => v.slice(v.lastIndexOf(':') + 1)).filter(Boolean);
+    if (ctx && ![...paths.filter((x) => !x.includes(':')), ...lineFiles].every((x) => inside(path.resolve(ctx.cwd || ctx.roots[0], x), ctx.roots))) {
       return 'git may only name files inside the checkout: that path leads out of it through a symbolic link.';
     }
     return null;
@@ -238,8 +241,10 @@ export function inside(p, roots) {
 const HARMLESS_TOOLS = new Set(['StructuredOutput', 'TodoWrite']);
 
 export function checkTool(name, input, { roots, repo, cwd }) {
-  input = input || {};
-  const where = (p) => (p === undefined || p === null || p === '' ? cwd : path.isAbsolute(p) ? p : path.resolve(cwd || '/', p));
+  if (input === undefined || input === null) input = {};
+  if (typeof input !== 'object' || Array.isArray(input)) return 'The tool input is not an object.';
+  // A path that is not a string (file_path: {}) gives null, which inside() refuses.
+  const where = (p) => (p === undefined || p === null || p === '' ? cwd : typeof p !== 'string' ? null : path.isAbsolute(p) ? p : path.resolve(cwd || '/', p));
   const outside = 'Only files in the checkout and the run folder can be read.';
   if (name === 'Read') return inside(where(input.file_path), roots) ? null : outside;
   if (name === 'Grep') return inside(where(input.path), roots) ? null : outside;
@@ -256,22 +261,37 @@ export function checkTool(name, input, { roots, repo, cwd }) {
   return `${typeof name === 'string' ? name : 'This tool'} is not available to a gh-glossary run.`;
 }
 
-function main() {
-  let raw = '';
-  process.stdin.on('data', (d) => (raw += d));
-  process.stdin.on('end', () => {
+// The decision for one hook call: the refusal reason, or null to let the call through. Anything that
+// goes wrong while checking (a value of the wrong type, a bug here) is a refusal, never a pass.
+export function decide(raw, env) {
+  try {
     let ev = null;
     try { ev = JSON.parse(raw); } catch {}
     if (!ev || typeof ev !== 'object') ev = {}; // tool_name is then missing, and the call is refused
     let roots = [];
-    try { roots = JSON.parse(process.env.GHG_ROOTS || '[]'); } catch {}
-    const reason = roots.length
-      ? checkTool(ev.tool_name, ev.tool_input, { roots, repo: process.env.GHG_REPO || '', cwd: ev.cwd || roots[0] })
-      : 'gh-glossary guard has no roots configured.';
+    try { roots = JSON.parse(env.GHG_ROOTS || '[]'); } catch {}
+    if (!Array.isArray(roots) || !roots.length || !roots.every((r) => typeof r === 'string' && path.isAbsolute(r))) return 'gh-glossary guard has no roots configured.';
+    const cwd = typeof ev.cwd === 'string' && path.isAbsolute(ev.cwd) ? ev.cwd : roots[0];
+    return checkTool(ev.tool_name, ev.tool_input, { roots, repo: env.GHG_REPO || '', cwd });
+  } catch (e) {
+    return `gh-glossary guard could not check this call (${e?.message || e}).`;
+  }
+}
+
+// Claude Code treats a hook that exits with any code but 2 and prints no decision as a non-blocking
+// error and lets the call run, so a crash outside decide() exits 2, which blocks the call.
+function main() {
+  const block = (e) => { try { process.stderr.write(`gh-glossary guard failed: ${e?.message || e}\n`); } catch {} process.exit(2); };
+  process.on('uncaughtException', block);
+  let raw = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => (raw += d));
+  process.stdin.on('error', block);
+  process.stdin.on('end', () => {
+    const reason = decide(raw, process.env);
     if (reason) {
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
-    }
-    process.exit(0);
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }), () => process.exit(0));
+    } else process.exit(0);
   });
 }
 
