@@ -1,0 +1,22 @@
+# Proposal
+
+## Why
+
+A tab defined one selection at a time and refused another while it ran, and nothing on the page
+showed which words were being defined. Defining a second selection that the first run's new pattern
+already matched opened the first term's definition, which looked like the wrong box.
+
+## What Changes
+
+- Several Defines may be asked for in a row; each starts a run and the host runs them one at a time.
+- Words waiting for or being defined pulse between two highlights until their run ends.
+- When runs finish, only the Define asked for last opens pinned; the others are underlined.
+- The tab's tooltip and the popup list every Define in progress.
+
+### Modified Capabilities
+
+- `define-runs`: Define a selection, Select result.
+
+## Impact
+
+- `extension/content.js`, `extension/popup.js` and their tests.
