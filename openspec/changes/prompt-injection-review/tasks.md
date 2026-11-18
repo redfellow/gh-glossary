@@ -20,7 +20,8 @@
 - [x] 3.1 Sync the "Text read during a run is data" requirement into `openspec/specs/term-definition/spec.md` and raise its spec version to 4; verify that a run's `system.md` holds the requirement and that a new term records `spec: 4`
 - [x] 3.2 Add the optional `notes` string to the three schemas and tell each skill when to fill it; verify that `--json-schema` accepts a reply with and without it
 - [x] 3.3 Cut `notes` to 500 characters and keep it in the page's record, or in the Select job's result; verify with a host test
-- [ ] 3.4 Show the note in the popup's status lines, escaped, and for a Select run in the tab's message; verify in Chrome with a run that returns a note
+- [x] 3.4 Show the note in the popup's status lines, escaped, and for a Select run in the tab's message; verify in Chrome with a run that returns a note
+  - Seen in Chrome for Testing 150 with a stand-in for claude that returned a note holding an `<img>` tag: the popup showed "The run reported: …" as text after a page run and after a Define, with no image element. Two real Quick runs on pages of this repository returned no note, so no real run's note was seen there; the probes of 3.5 show real runs returning one.
 - [x] 3.5 Run the review's three probes again as fixtures (hidden HTML comment, "system message" comment, convention in the checkout's `CLAUDE.md`), headless with the host's flags; verify that no canary reaches the output and that `notes` names the text, and record the results in the pull request
 
 ## 4. Store and links
@@ -46,13 +47,16 @@
 - [x] 6.6 Apply "Limit writes" in `storeTerms` and `applyCorrections` when the mode is not off; verify with store tests for the five scenarios
 - [x] 6.7 In the outside pages mode, leave terms marked outside out of the glossary read for other pages and for runs on other pages; verify with store tests for the three "Outside terms stay on their page" scenarios
 - [x] 6.8 In the outside pages mode, leave outsiders' comments, reviews and replies out of `page.json` and count them in the page's record; verify with tests over the recorded fixtures
-- [ ] 6.9 Add the mode picker and the left-out count to the popup, and the "From an outside contributor's page" line to the definition box; verify in Chrome in all three modes on a fork's pull request
+- [x] 6.9 Add the mode picker and the left-out count to the popup, and the "From an outside contributor's page" line to the definition box; verify in Chrome in all three modes on a fork's pull request
+  - Seen in Chrome for Testing 150 on cli/cli#15069, with the popup page loaded in a background tab beside the page (the toolbar's own popup opens only in a focused window): the three modes are listed; choosing one reaches the host's `config.json`; after a real Quick in the outside pages mode the popup says "3 comments by outside contributors were not read."; the box says "From an outside contributor's page · spec v4" in the two limiting modes and "Not verified at source · spec v4" with the mode off; another page of the repository is given 0 of the 9 terms in the outside pages mode and all 9 in the other two.
 - [x] 6.10 Write the README section on outside pages (what each mode does, that off is the default and what it leaves open, that Send to Claude is outside the guard) and sync the `outside-content`, `run-sandbox` sender and `definition-popover` provenance requirements; verify with `openspec validate --specs`
 
 ## 7. Integration
 
 - [x] 7.1 Run `npm test` and `openspec validate --specs`; verify both pass
 - [ ] 7.2 End to end in Chrome with the extension reloaded: Quick on a pull request, Define on a selection, a definition with a link, and a mode change; verify each behaves as its spec says
+  - Seen in Chrome for Testing 150 against a copy of the host: Quick from the popup page on a fork's pull request (9 terms, underlined on the page), Define on a word selected by a double click (the menu's click was sent to the extension by script; the definition opened pinned, marked "You asked"), a definition offering "Open github.com/cli/cli/issues/15066", and the mode changes above.
+  - Still to do by hand in your own Chrome: open the popup from the toolbar or the tab, and choose Define from the real context menu.
 
 ## Workflow follow-up
 
