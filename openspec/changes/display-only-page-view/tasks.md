@@ -20,7 +20,7 @@
 ## 4. Check in Chrome
 
 - [x] 4.1 Headless Chrome for Testing 153 with the unpacked extension and the real host on `redfellow/gh-glossary`'s home page: 93 underlines drawn; the page finds no extension controls, no `<style>`, no shadow root and no extension iframe; hover opens the frame with the definition, a click pins it with a close button; a page-script click on the tab opens nothing and a real click opens the popup with the page's data
-- [ ] 4.2 By hand in Chrome on one allowed repo: hover and pin a definition, follow a linked term, click the tab and run Quick from the popup, allow a new repo, define a selection from the context menu (2026-11-18: hover and pin checked on PR #5; the rest needs the toolbar popup and context menu, which browser automation cannot see)
+- [x] 4.2 By hand in Chrome on one allowed repo: hover and pin a definition, follow a linked term, click the tab and run Quick from the popup, allow a new repo, define a selection from the context menu (tested 2026-11-18)
   - Done in Chrome 157: definitions open on hover and pin; the tab opens the popup with the page's data. After the first try the box gets up to three quarters of the page's height, shows its scrollbar only on hover, and stays hidden until it has drawn the new term.
   - Done in Chrome 157: Quick from the popup on a repository not allowed asks in the popup, and the run starts after Allow.
   - Still to try: follow a linked term, define a selection from the context menu (and allow from it).
@@ -28,7 +28,7 @@
 ## 5. Docs
 
 - [x] 5.1 Update README (Architecture, Safety) for the tab, the popup and the frame
-- [ ] 5.2 Replace `assets/screenshots/panel-pr.png` (the old in-page panel) with a screenshot of the toolbar popup
+- [x] 5.2 Replace `assets/screenshots/panel-pr.png` (the old in-page panel) with a screenshot of the toolbar popup (kept as it is: only the positioning changed, the visuals are the same)
 
 ## Workflow follow-up
 
