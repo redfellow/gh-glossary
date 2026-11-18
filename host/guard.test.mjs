@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { splitArgs, checkBash, checkTool, decide, guardRan } from './guard.mjs';
+import { splitArgs, quoted, checkBash, checkTool, decide, guardRan } from './guard.mjs';
 
 const REPO = 'octo-org/octo-repo';
 const ok = (cmd) => assert.equal(checkBash(cmd, REPO), null, cmd);
@@ -19,12 +19,14 @@ test('Plain words and quotes are split like a shell would', () => {
 
 test('Shell operators, expansions and escapes are refused', () => {
   for (const c of ['git log; rm -rf x', 'git log && curl x', 'git log | head', 'git log > /tmp/x', 'git log $(id)', 'git log `id`',
-    'git show "$HOME"', 'git log \\\n', 'git log *', 'git log ~/x', 'git log "unterminated', 'git log\nrm x', 'FOO=1 git log']) no(c);
+    'git show "$HOME"', 'git log \\\n', 'git log *', 'git log ~/x', 'git log "unterminated', 'git log\nrm x', 'FOO=1 git log',
+    'git diff =node =gh', 'git diff --stat =node =gh', 'git log -- =x']) no(c);
 });
 
 test('Read-only git commands on the checkout are allowed', () => {
   for (const c of ['git log --oneline -5', 'git show HEAD:README.md', 'git diff HEAD~1 -- src', 'git grep -n auth', 'git blame -L 1,20 a.js',
-    'git status', 'git ls-files', 'git diff --text HEAD', 'git log --format=%H -1', 'git grep -e foo -- x']) ok(c);
+    'git status', 'git ls-files', 'git diff --text HEAD', 'git log --format=%H -1', 'git log --format=%h', 'git grep -e foo -- x',
+    `git grep '=foo'`, 'git grep -e "=foo"', 'git log HEAD~3..HEAD^']) ok(c);
 });
 
 test('git options that write, read outside the repo or run programs are refused, abbreviated too', () => {
@@ -92,6 +94,33 @@ test('As a hook: a refusal is a deny, an accepted command an allow, an accepted 
   assert.equal(JSON.parse(garbage.stdout).hookSpecificOutput.permissionDecision, 'deny', 'input that does not parse is refused');
   const noRoots = call({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') }, cwd: co }, []);
   assert.equal(JSON.parse(noRoots.stdout).hookSpecificOutput.permissionDecision, 'deny', 'no roots: everything is refused');
+});
+
+test('As a hook: an accepted command is handed back rebuilt from its checked words, each quoted', () => {
+  assert.equal(quoted(['git', 'log', 'HEAD~3..HEAD^', '^zzz', 'a b', "it's", '']), `'git' 'log' 'HEAD~3..HEAD^' '^zzz' 'a b' 'it'\\''s' ''`);
+  const guard = fileURLToPath(new URL('./guard.mjs', import.meta.url));
+  const co = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-rebuild-'));
+  const call = (tool_name, tool_input) => JSON.parse(spawnSync(process.execPath, [guard], { input: JSON.stringify({ tool_name, tool_input, cwd: co }), env: { ...process.env, GHG_ROOTS: JSON.stringify([co]), GHG_REPO: REPO }, encoding: 'utf8' }).stdout).hookSpecificOutput;
+  const allowed = call('Bash', { command: `git  grep -n "relay queue" ^zzz -- 'docs/a b.md'`, description: 'search', timeout: 5000 });
+  assert.equal(allowed.permissionDecision, 'allow');
+  assert.deepEqual(allowed.updatedInput, { command: `'git' 'grep' '-n' 'relay queue' '^zzz' '--' 'docs/a b.md'`, description: 'search', timeout: 5000 }, 'the other input fields are kept');
+  const denied = call('Bash', { command: 'git diff =node =gh' });
+  assert.equal(denied.permissionDecision, 'deny');
+  assert.equal(denied.updatedInput, undefined, 'a refusal changes nothing');
+});
+
+test('The rebuilt command reaches the program as written, in sh and in zsh with extended globbing on', { skip: process.platform === 'win32' }, (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-quoted-'));
+  for (const f of ['-Osh x.sh', 'README.md', 'x.sh']) fs.writeFileSync(path.join(dir, f), '');
+  const words = ['^zzz', '=sh', 'HEAD~3..HEAD^', "it's", '*', '$HOME', 'a b', ''];
+  const cmd = quoted(['printf', '%s\\n', ...words]);
+  const run = (shell, args) => spawnSync(shell, args, { cwd: dir, encoding: 'utf8' });
+  assert.equal(run('sh', ['-c', cmd]).stdout, `${words.join('\n')}\n`, 'sh');
+  const zsh = ['-f', '-o', 'extendedglob', '-c'];
+  if (run('zsh', [...zsh, 'exit 0']).error) { t.diagnostic('zsh is not installed: checked in sh only'); return; }
+  assert.equal(run('zsh', [...zsh, cmd]).stdout, `${words.join('\n')}\n`, 'zsh');
+  // Unquoted, the same shell puts the checkout's file names in the word's place.
+  assert.equal(run('zsh', [...zsh, 'printf "%s\\n" ^zzz']).stdout, '-Osh x.sh\nREADME.md\nx.sh\n');
 });
 
 test('Glob refuses .. written with backslashes too', () => {
