@@ -12,8 +12,10 @@ still found ten weaker spots, one of them a way past the guard:
    passed the real hook and diffed two files outside the roots (confirmed end to end; zsh turns
    `=name` into that command's path). With `setopt extendedglob`, `^` and a `~` inside a word are
    glob operators: in a checkout holding a file named `-Osh x.sh`, `git grep ^zzz` ran `x.sh`, and
-   a file named `--output=…` made `git log ^zzz` write a file (confirmed in zsh; not reproduced
-   through Claude Code, whose shell snapshot copies the reader's `setopt` lines).
+   a file named `--output=…` made `git log ^zzz` write a file. That was confirmed in zsh alone.
+   Through Claude Code 2.1.323 it does not happen: Claude Code turns `extendedglob` off before each
+   command, even when the reader's `.zshenv` sets it. So only Claude Code's own hardening stood
+   between that shell option and the guard, which is meant to be the one barrier.
 2. A pull request run reads the pull request's head, so in a fork's pull request the README,
    `CLAUDE.md` and docs the skills name as sources are the author's. Its terms go to the whole
    repository (or owner), reusing an id replaces any stored term, Thorough corrections rewrite any
