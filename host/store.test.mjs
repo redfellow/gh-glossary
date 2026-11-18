@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkPattern, mergedGlossary, storeTerms, applyCorrections, glossaryForRun, defineWith, readJson, writeJson } from './store.mjs';
+import { checkPattern, mergedGlossary, storeTerms, applyCorrections, glossaryForRun, defineWith, readJson, writeJson, LIMITS } from './store.mjs';
 import { selectKey } from './rules.mjs';
 
 const REPO = 'octo-org/widgets';
@@ -219,4 +219,26 @@ test('Allowing one repository adds no owner terms: a new owner-layer term is sav
   assert.equal(shown(gadgets, 'hub').layer, 'org', 'with the owner allowed it is an owner term');
   storeTerms(widgets, REPO, [term('hub', { layer: 'org', def: 'updated' })], META, quiet);
   assert.equal(shown(gadgets, 'hub').def, 'updated', 'a run may still update an owner term its own repository defined');
+});
+
+test('Pattern checks: a chain of optional parts is refused before it can freeze a page', () => {
+  for (const p of ['.?'.repeat(22) + '§', '.?'.repeat(7) + 'x', '(?:a|b)'.repeat(7) + 'c', '\\w*' + '.?'.repeat(5) + 'x']) {
+    const t = Date.now();
+    assert.ok(checkPattern(p), p);
+    assert.ok(Date.now() - t < 500, `${p} was checked quickly`);
+  }
+  for (const p of ['ORDER BY dist(?: ASC)?(?:,? ?LIMIT 1)?', '`?\\bconsumer`? \\+ `?producer`? scopes\\b', '\\bre-?extract(?:ion|ions|ed|ing)?\\b|\\breprocess(?:es|ed|ing)?\\b']) {
+    assert.equal(checkPattern(p), null, p);
+  }
+});
+
+test('A run saves at most LIMITS.terms terms, and over-long fields drop the term', () => {
+  const { widgets } = fresh(); const logged = [];
+  const many = Array.from({ length: LIMITS.terms + 5 }, (_, i) => term(`t${i}`));
+  storeTerms(widgets, REPO, many, META, (s) => logged.push(s));
+  assert.equal(ids(widgets.repo).length, LIMITS.terms);
+  assert.match(logged.join('\n'), /dropped 5 terms/);
+  const { gadgets } = fresh();
+  storeTerms(gadgets, 'octo-org/gadgets', [term('big', { def: 'x'.repeat(LIMITS.def + 1) }), term('far', { link: `https://example.com/${'a'.repeat(LIMITS.link)}` }), term('ok')], META, quiet);
+  assert.deepEqual(ids(gadgets.repo), ['ok']);
 });
