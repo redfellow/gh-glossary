@@ -114,7 +114,9 @@ const mayChangeOwnerTerm = (t, repo, ownerAllowed) => ownerAllowed || String(t?.
 
 // Saves a run's terms. An id replaces the term in its own layer; an owner-layer term also removes
 // that id from this repository's glossary, so the new definition is the one shown. An owner-layer
-// term the run may not change is saved in this repository's glossary instead.
+// term the run may not write is saved in this repository's glossary instead: a new one unless the
+// reader allowed the whole owner (allowing one repository must not put terms on every page of the
+// owner), and an existing one that another repository defined.
 export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false } = {}) {
   const current = { repo: readJson(files.repo, { terms: [] }), org: readJson(files.org, { terms: [] }) };
   const maps = { repo: new Map(current.repo.terms.map((t) => [t.id, t])), org: new Map(current.org.terms.map((t) => [t.id, t])) };
@@ -123,7 +125,10 @@ export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false
     const problem = checkPattern(t.pattern);
     if (problem) { log(`dropped term ${t.id}: ${problem}`); continue; }
     let layer = t.layer === 'org' ? 'org' : 'repo';
-    if (layer === 'org' && maps.org.has(t.id) && !mayChangeOwnerTerm(maps.org.get(t.id), repo, ownerAllowed)) {
+    if (layer === 'org' && !maps.org.has(t.id) && !ownerAllowed) {
+      log(`saved ${t.id} in the repository glossary: only allowing the whole owner adds owner terms`);
+      layer = 'repo';
+    } else if (layer === 'org' && maps.org.has(t.id) && !mayChangeOwnerTerm(maps.org.get(t.id), repo, ownerAllowed)) {
       log(`saved ${t.id} in the repository glossary: the owner term with that id came from ${maps.org.get(t.id).origin}`);
       layer = 'repo';
     }
