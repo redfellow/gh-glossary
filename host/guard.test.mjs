@@ -75,7 +75,7 @@ test('Tools not on the guard\'s list are refused, whatever the reader\'s own set
   }
 });
 
-test('As a hook: a refusal is a PreToolUse deny on stdout, an allowed call prints nothing', () => {
+test('As a hook: a refusal is a deny, an accepted command an allow, an accepted read prints nothing', () => {
   const guard = fileURLToPath(new URL('./guard.mjs', import.meta.url));
   const co = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-hook-'));
   const call = (ev, roots = [co]) => spawnSync(process.execPath, [guard], { input: JSON.stringify(ev), env: { ...process.env, GHG_ROOTS: JSON.stringify(roots), GHG_REPO: REPO }, encoding: 'utf8' });
@@ -85,7 +85,9 @@ test('As a hook: a refusal is a PreToolUse deny on stdout, an allowed call print
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
   assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
   const allowed = call({ tool_name: 'Bash', tool_input: { command: 'git log -1' }, cwd: co });
-  assert.equal(allowed.stdout, '');
+  assert.equal(JSON.parse(allowed.stdout).hookSpecificOutput.permissionDecision, 'allow', 'the run has no Bash rules: the guard approves the command');
+  const read = call({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') }, cwd: co });
+  assert.equal(read.stdout, '', 'a read inside falls through to the Read(//root/**) rules');
   const garbage = spawnSync(process.execPath, [guard], { input: 'not json', env: { ...process.env, GHG_ROOTS: JSON.stringify([co]), GHG_REPO: REPO }, encoding: 'utf8' });
   assert.equal(JSON.parse(garbage.stdout).hookSpecificOutput.permissionDecision, 'deny', 'input that does not parse is refused');
   const noRoots = call({ tool_name: 'Read', tool_input: { file_path: path.join(co, 'a') }, cwd: co }, []);
@@ -175,4 +177,29 @@ test('As a hook: every call it checks leaves a mark in GHG_MARK, refused or not'
   call({ tool_name: 'Read', tool_input: { file_path: '/etc/hosts' }, cwd: co });
   assert.equal(guardRan(mark), true);
   assert.deepEqual(fs.readFileSync(mark, 'utf8').trim().split('\n'), ['StructuredOutput', 'Read']);
+});
+
+test('Network and device paths are refused without touching the file system', () => {
+  const co = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-unc-'));
+  const env = { roots: [co], repo: REPO, cwd: co };
+  const seen = []; const orig = fs.realpathSync;
+  fs.realpathSync = (p, ...r) => { seen.push(String(p)); return orig(p, ...r); };
+  try {
+    for (const p of ['//attacker.example/share/x', '\\\\attacker.example\\share\\x', '\\\\?\\C:\\x', '/etc/hosts', '/attacker.example/x']) {
+      assert.ok(checkTool('Read', { file_path: p }, env), p);
+      assert.ok(checkTool('Grep', { path: p, pattern: 'x' }, env), p);
+    }
+    assert.ok(checkTool('Glob', { pattern: '//attacker.example/share/*' }, env));
+  } finally { fs.realpathSync = orig; }
+  assert.deepEqual(seen.filter((p) => /attacker|etc/.test(p)), [], 'no outside path reached realpath');
+});
+
+test('Glob: no .. anywhere, and the folder before the first wildcard is checked through symlinks', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-glob-'));
+  const co = path.join(base, 'co'), out = path.join(base, 'outside');
+  fs.mkdirSync(co); fs.mkdirSync(out); fs.mkdirSync(path.join(co, 'src'));
+  fs.symlinkSync(out, path.join(co, 'out'));
+  const env = { roots: [co], repo: REPO, cwd: co };
+  for (const pattern of ['{..,x}/**', '**/../*', 'out/**', 'out/*.txt', `${out}/**`, 5]) assert.ok(checkTool('Glob', { pattern }, env), String(pattern));
+  for (const pattern of ['**/*.js', 'src/**/*.ts', `${co}/src/*`, '*.md']) assert.equal(checkTool('Glob', { pattern }, env), null, pattern);
 });

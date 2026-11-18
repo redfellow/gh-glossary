@@ -5,8 +5,11 @@
 //
 // Claude Code calls it with the tool call as JSON on stdin. Roots and repo come from the environment
 // the host sets: GHG_ROOTS (JSON array of absolute folders) and GHG_REPO (owner/repo).
-// A refusal is printed as a PreToolUse "deny" decision; anything allowed falls through to the run's
-// --allowedTools list. Unknown tools, unknown options and input that does not parse are refused.
+// A refusal is printed as a PreToolUse "deny" decision. A Bash command it accepts is printed as
+// "allow": the run's --allowedTools has no Bash rules, so without this guard (hooks turned off) only
+// the commands Claude Code itself counts as read-only run, and none that write, start a program or
+// print the environment. Read, Grep and Glob it accepts fall through to the run's Read(//root/**)
+// rules. Unknown tools, unknown options and input that does not parse are refused.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -231,10 +234,19 @@ function real(p) {
     tail = path.join(path.basename(head), tail); head = up;
   }
 }
+// A network or device path (\\host\share, //host/share, \\?\C:\) is refused before anything
+// touches it: on Windows resolving one connects to that host, which leaks the name and the reader's
+// credentials even though the call is then refused.
+const UNC = /^[\\/]{2}/;
+const under = (p, root) => { const r = path.relative(root, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
 export function inside(p, roots) {
-  if (typeof p !== 'string' || !path.isAbsolute(p) || p.includes('\0')) return false;
-  const rp = real(p);
-  return roots.some((root) => { const r = path.relative(real(root), rp); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); });
+  if (typeof p !== 'string' || !path.isAbsolute(p) || p.includes('\0') || UNC.test(p)) return false;
+  // Lexically first, so the file system is only asked about paths that are already under a root (as
+  // written, or with the root's own symlinks resolved); then with every symlink resolved.
+  const abs = path.resolve(p);
+  if (!roots.some((root) => under(abs, path.resolve(root)) || under(abs, real(root)))) return false;
+  const rp = real(abs);
+  return roots.some((root) => under(rp, real(root)));
 }
 
 // Tools that read nothing and run nothing: the run's structured reply and its own task list.
@@ -244,14 +256,21 @@ export function checkTool(name, input, { roots, repo, cwd }) {
   if (input === undefined || input === null) input = {};
   if (typeof input !== 'object' || Array.isArray(input)) return 'The tool input is not an object.';
   // A path that is not a string (file_path: {}) gives null, which inside() refuses.
-  const where = (p) => (p === undefined || p === null || p === '' ? cwd : typeof p !== 'string' ? null : path.isAbsolute(p) ? p : path.resolve(cwd || '/', p));
+  const where = (p) => (p === undefined || p === null || p === '' ? cwd : typeof p !== 'string' || UNC.test(p) ? null : path.isAbsolute(p) ? p : path.resolve(cwd || '/', p));
   const outside = 'Only files in the checkout and the run folder can be read.';
   if (name === 'Read') return inside(where(input.file_path), roots) ? null : outside;
   if (name === 'Grep') return inside(where(input.path), roots) ? null : outside;
   if (name === 'Glob') {
-    if (!inside(where(input.path), roots)) return outside;
-    const pat = String(input.pattern || '');
-    if (pat.split(/[\\/]/).includes('..') || (path.isAbsolute(pat) && !inside(pat.replace(/[*?[{].*$/, '') || '/', roots))) return outside;
+    const base = where(input.path);
+    if (!inside(base, roots)) return outside;
+    if (typeof input.pattern !== 'string') return 'The Glob pattern is not a string.';
+    const pat = input.pattern;
+    // No .. anywhere ({..,x}/** included), and the folder the pattern names before its first wildcard
+    // must be inside too, symlinks resolved (out/** where out links outside the checkout).
+    if (pat.includes('..') || UNC.test(pat)) return outside;
+    const wild = pat.search(/[*?[{]/), lit = wild < 0 ? pat : pat.slice(0, wild);
+    const dir = lit.slice(0, Math.max(lit.lastIndexOf('/'), lit.lastIndexOf('\\')) + 1);
+    if ((dir || path.isAbsolute(pat)) && !inside(path.isAbsolute(dir || pat) ? (dir || pat) : path.resolve(base, dir), roots)) return outside;
     return null;
   }
   if (name === 'Bash') return checkBash(input.command, repo, { roots, cwd });
@@ -305,8 +324,10 @@ function main() {
     let toolName; try { toolName = JSON.parse(raw)?.tool_name; } catch {}
     leaveMark(process.env.GHG_MARK, toolName);
     const reason = decide(raw, process.env);
-    if (reason) {
-      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }), () => process.exit(0));
+    const decision = reason ? 'deny' : toolName === 'Bash' ? 'allow' : null;
+    if (decision) {
+      const why = reason || 'gh-glossary guard: a read-only command on the checkout.';
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: why } }), () => process.exit(0));
     } else process.exit(0);
   });
 }
