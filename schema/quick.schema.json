@@ -5,6 +5,9 @@
     "terms"
   ],
   "properties": {
+    "notes": {
+      "type": "string"
+    },
     "terms": {
       "type": "array",
       "items": {

@@ -5,13 +5,14 @@
 //
 // Requests are { id, method, path, query?, body? }; every reply is { id, code, body }.
 //   GET  /api/health                                     -> { ok, modes }
-//   GET  /api/page?repo=o/r&page=<key>[&ref=..] | &blob=<ref/path>  -> glossary, page info, job, allowed
+//   GET  /api/page?repo=o/r&page=<key>[&ref=..] | &blob=<ref/path>  -> glossary, page info, job, allowed, outsideMode
 //   POST /api/allow   { repo, scope: 'repo' | 'owner' }  -> { allowed: true }
 //   POST /api/define  { repo, page | blob, ref?, mode: 'quick'|'thorough', regenerate? }
 //   POST /api/select  { repo, page | blob, ref?, text, context }      -> { key, job }
 //   GET  /api/job?key=<key>                                           -> job (select runs report termId)
 //   GET  /api/dir?path=<absolute folder>                              -> { ok } (for Send to Claude)
 //   GET  /api/allowlist | POST /api/disallow { scope, name }          -> { owners, repos } (options page)
+//   POST /api/outside { mode: 'off'|'limit-writes'|'outside-pages' }  -> { mode } (the popup only)
 // Page keys: pr-<n>, issue-<n>, discussion-<n>, file:<path>, readme.
 // Reading stored glossaries works for any repo; starting a Claude run needs the repo or its owner on
 // the allowlist (config.json "allow"), which only the extension's own allow prompt adds to.
@@ -29,6 +30,7 @@ import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rule
 import { guardRan } from './guard.mjs';
 import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
 import { resolveCommand, hookCommand, stopTree, folderName, samePath, readRule, managedSettingsFiles, hooksOffReason } from './platform.mjs';
+import { OUTSIDE_MODES, configFrom, budgetFor, claudeArgs, parseResult, resultProblem, pageTarget, runPrompt, pageForRun, prOutside, openerOutside, refOutside, limitedRun, cutNote } from './run.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, 'cache');
@@ -59,33 +61,14 @@ const RUN_GIT_ENV = {
   GIT_EXEC_PATH: null, GIT_SSH: null, GIT_SSH_COMMAND: null, GIT_ASKPASS: null, GIT_EDITOR: null,
 };
 
-const DEFAULTS = {
-  maxMinutes: 30,
-  allow: { owners: [], repos: [] },
-  modes: {
-    quick: { model: 'sonnet', effort: 'medium' },
-    thorough: { model: 'opus', effort: 'high' },
-    select: { model: 'sonnet', effort: 'medium' },
-  },
-};
-function loadConfig() {
-  let cfg = {};
-  try { cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
-  const modes = { ...DEFAULTS.modes, ...(cfg.modes || {}) };
-  // GHG_MODEL / GHG_EFFORT override every mode, for a one-off cheap test run.
-  if (process.env.GHG_MODEL || process.env.GHG_EFFORT) {
-    for (const k of Object.keys(modes)) modes[k] = { model: process.env.GHG_MODEL || modes[k].model, effort: process.env.GHG_EFFORT || modes[k].effort };
-  }
-  const allow = { owners: [...(cfg.allow?.owners || [])], repos: [...(cfg.allow?.repos || [])] };
-  return { ...DEFAULTS, ...cfg, allow, modes };
+// The defaults and how config.json is read are in host/run.mjs.
+const readConfigFile = () => { try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; } };
+const config = configFrom(readConfigFile(), process.env);
+// Writes the keys of patch into config.json and leaves every other key as the reader wrote it.
+function saveConfig(patch) {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...readConfigFile(), ...patch }, null, 2) + '\n', { mode: 0o600 });
 }
-const config = loadConfig();
-function saveAllow() {
-  let cfg = {};
-  try { cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch {}
-  cfg.allow = config.allow;
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
-}
+const saveAllow = () => saveConfig({ allow: config.allow });
 
 // The run's tool rules are only Read(//root/**) for its two folders (which also cover Grep and Glob).
 // There are no Bash rules: the guard approves each command it has checked, so a run that somehow lost
@@ -184,32 +167,58 @@ async function checkout(repo, fetchRef) {
   return { dir, sha };
 }
 
-// What the page shows, written to runDir for the run. Returns a one-line description.
-async function gatherPage(repo, page, co, runDir, ref) {
+// Who opened issue or pull request n, in GitHub's words (OWNER, MEMBER, COLLABORATOR, NONE, ...).
+// Empty when GitHub does not say, which counts as an outsider.
+const association = async (repo, n) => { try { return (await run('gh', ['api', `repos/${repo}/issues/${n}`, '-q', '.author_association'])).trim(); } catch { return ''; } };
+const refPath = (ref) => ref.split('/').map(encodeURIComponent).join('/');
+const matchingRefs = async (repo, kind, ref) => { try { return JSON.parse(await run('gh', ['api', `repos/${repo}/git/matching-refs/${kind}/${refPath(ref)}`, '-q', '[.[].ref]'])); } catch { return []; } };
+// Whether a file or home page shows code from outside the repository: its ref is neither a branch nor
+// a tag, and the commit checked out is not on the default branch (a fork's commit can be opened
+// through the repository's own address).
+async function fileOutside(repo, ref, sha) {
+  if (!ref) return false;
+  const [heads, tags] = await Promise.all([matchingRefs(repo, 'heads', ref), matchingRefs(repo, 'tags', ref)]);
+  if (!refOutside(ref, { heads, tags })) return false;
+  let compare = null;
+  try { compare = (await run('gh', ['api', `repos/${repo}/compare/${sha}...${refPath(await defaultBranch(repo))}`, '-q', '.status'])).trim(); } catch {}
+  return refOutside(ref, { heads, tags, compare });
+}
+
+// What the page shows, written to runDir for the run: target.json, and for a pull request, issue or
+// discussion page.json (without the text the page hides and, in the outside-pages mode, without
+// outsiders' comments) and page.diff. ref is the ref in the page's address, if it has one; shown is
+// the ref checked out. Returns { target, outside, leftOut }.
+async function gatherPage(repo, page, co, runDir, { ref, shown, mode }) {
   const out = (name, text) => fs.writeFileSync(path.join(runDir, name), text);
+  const pageJson = (kind, json) => {
+    const r = pageForRun(kind, json, { leaveOutOutsiders: mode === 'outside-pages' });
+    out('page.json', `${JSON.stringify(r.page, null, 2)}\n`);
+    return r.leftOut;
+  };
+  let outside, leftOut = 0, readme = null;
   if (page.startsWith('pr-')) {
     const n = page.slice(3);
-    out('page.json', await run('gh', ['pr', 'view', n, '--repo', repo, '--json', 'number,title,body,comments,reviews,url']));
+    const pr = JSON.parse(await run('gh', ['pr', 'view', n, '--repo', repo, '--json', 'number,title,body,comments,reviews,url,isCrossRepository']));
+    leftOut = pageJson('pr', pr);
     out('page.diff', await run('gh', ['pr', 'diff', n, '--repo', repo]));
-    return `pull request #${n}: description, comments and reviews in page.json, the diff in page.diff`;
-  }
-  if (page.startsWith('issue-')) {
+    outside = prOutside(pr, await association(repo, n));
+  } else if (page.startsWith('issue-')) {
     const n = page.slice(6);
-    out('page.json', await run('gh', ['issue', 'view', n, '--repo', repo, '--json', 'number,title,body,comments,url']));
-    return `issue #${n}: body and comments in page.json`;
-  }
-  if (page.startsWith('discussion-')) {
+    leftOut = pageJson('issue', JSON.parse(await run('gh', ['issue', 'view', n, '--repo', repo, '--json', 'number,title,body,comments,url'])));
+    outside = openerOutside(await association(repo, n));
+  } else if (page.startsWith('discussion-')) {
     const n = page.slice(11), [owner, name] = repo.split('/');
-    const q = 'query($o:String!,$n:String!,$d:Int!){repository(owner:$o,name:$n){discussion(number:$d){title body url comments(first:100){nodes{body replies(first:50){nodes{body}}}}}}}';
-    out('page.json', await run('gh', ['api', 'graphql', '-f', `query=${q}`, '-f', `o=${owner}`, '-f', `n=${name}`, '-F', `d=${n}`]));
-    return `discussion #${n}: body and comments in page.json`;
+    const q = 'query($o:String!,$n:String!,$d:Int!){repository(owner:$o,name:$n){discussion(number:$d){title body url authorAssociation comments(first:100){nodes{body authorAssociation replies(first:50){nodes{body authorAssociation}}}}}}}';
+    const d = JSON.parse(await run('gh', ['api', 'graphql', '-f', `query=${q}`, '-f', `o=${owner}`, '-f', `n=${name}`, '-F', `d=${n}`]));
+    leftOut = pageJson('discussion', d);
+    outside = openerOutside(d?.data?.repository?.discussion?.authorAssociation);
+  } else {
+    if (page === 'readme') readme = fs.readdirSync(co.dir).find((x) => /^readme(\.md|\.markdown|\.rst|\.txt)?$/i.test(x)) || null;
+    outside = await fileOutside(repo, ref, co.sha);
   }
-  if (page === 'readme') {
-    const f = fs.readdirSync(co.dir).find((x) => /^readme(\.md|\.markdown|\.rst|\.txt)?$/i.test(x));
-    return `the repository home page, which shows ${f || 'the README'} at ${ref}`;
-  }
-  const p = page.slice(5);
-  return `the file ${p} at ${ref} (read it from the checkout)`;
+  const target = pageTarget(page, { ref: shown, readme });
+  writeJson(path.join(runDir, 'target.json'), target);
+  return { target, outside, leftOut };
 }
 
 // ---------- jobs (one Claude run at a time) ----------
@@ -230,7 +239,7 @@ function enqueue(key, fn) {
     try {
       job.result = await fn(log, logPath);
       job.state = 'done'; job.doneAt = new Date().toISOString();
-      setTimeout(() => { if (jobs.get(key) === job) jobs.delete(key); }, 10 * 60_000);
+      setTimeout(() => { if (jobs.get(key) === job) jobs.delete(key); }, 10 * 60_000).unref(); // the host lives as long as its input does, not this timer
     } catch (e) { job.state = 'error'; job.error = tidy(e.message); job.log = path.basename(logPath); log(`error: ${e.stack || e.message}`); }
   }).catch(() => {});
   return job;
@@ -240,6 +249,7 @@ function enqueue(key, fn) {
 // tools, and the guard hook (host/guard.mjs) that keeps it inside the checkout and the run folder.
 async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const { model, effort } = config.modes[op];
+  const budget = budgetFor(config, op);
   const system = path.join(addDir, 'system.md');
   fs.writeFileSync(system, `${fs.readFileSync(SPEC_PATH, 'utf8')}\n\n---\n\n${fs.readFileSync(SKILLS[op], 'utf8')}`);
   // The guard is the run's one barrier, so the run does not start without it. disableAllHooks: false
@@ -247,20 +257,9 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const off = hooksOffReason(managedSettingsFiles());
   if (off) throw new Error(`Claude Code hooks are turned off (${off}), so gh-glossary cannot guard a run and will not start one.`);
   const settings = { disableAllHooks: false, hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(process.execPath, GUARD) }] }] } };
-  const roots = [cwd, addDir].map((d) => fs.realpathSync(d));
-  const args = [
-    '-p', '--model', model, '--effort', effort,
-    '--output-format', 'json', '--json-schema', SCHEMAS[op],
-    '--append-system-prompt-file', system,
-    '--setting-sources', 'user', '--settings', JSON.stringify(settings),
-    '--strict-mcp-config', '--no-chrome', '--no-session-persistence',
-    '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-    '--add-dir', addDir,
-    '--allowedTools', roots.map((d) => readRule(d)).join(','),
-    '--disallowedTools', 'WebFetch,WebSearch,Write,Edit,NotebookEdit',
-  ];
-  if (config.maxBudgetUsd) args.push('--max-budget-usd', String(config.maxBudgetUsd));
-  log(`claude ${op} ${model}/${effort} spec ${specVersion()} in ${cwd}`);
+  const readRules = [cwd, addDir].map((d) => readRule(fs.realpathSync(d)));
+  const args = claudeArgs({ model, effort, schema: SCHEMAS[op], system, settings, addDir, readRules, budget });
+  log(`claude ${op} ${model}/${effort} spec ${specVersion()} in ${cwd}${budget ? `, at most ${budget} US dollars` : ''}`);
   // The guard marks every call it checks in a file outside the run's folders, at a path the run cannot
   // guess. No mark means the guard never ran (hooks turned off by settings the host cannot read), and
   // the run's output is discarded before anything is stored.
@@ -270,15 +269,18 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const env = { GHG_ROOTS: JSON.stringify([cwd, addDir]), GHG_REPO: repo, GHG_MARK: mark, ...RUN_GIT_ENV };
   let raw, guarded = false;
   try {
-    raw = await run('claude', args, { cwd, input: prompt, env, timeoutMs: config.maxMinutes * 60_000 });
+    // claude exits with an error when it stops at the spend limit, and still prints its result.
+    raw = await run('claude', args, { cwd, input: prompt, env, timeoutMs: config.maxMinutes * 60_000 })
+      .catch((e) => { if (parseResult(e.out)) return e.out; throw e; });
     guarded = guardRan(mark);
   } finally {
     fs.rmSync(mark, { force: true });
   }
-  if (!guarded) throw new Error('the guard did not run for this run, so its result was discarded. Check whether Claude Code hooks are turned off (disableAllHooks or allowManagedHooksOnly) in managed settings.');
   fs.writeFileSync(logPath.replace(/\.log$/, '.result.json'), raw);
-  const res = JSON.parse(raw);
-  if (res.is_error || !res.structured_output) throw new Error(`claude returned no result (${res.subtype || 'unknown'})`);
+  const res = parseResult(raw);
+  const problem = resultProblem(res, budget);
+  if (problem) throw new Error(problem);
+  if (!guarded) throw new Error('the guard did not run for this run, so its result was discarded. Check whether Claude Code hooks are turned off (disableAllHooks or allowManagedHooksOnly) in managed settings.');
   return { out: res.structured_output, cost: res.total_cost_usd ?? null, model: `${model}/${effort}` };
 }
 
@@ -293,54 +295,53 @@ async function pageCheckout(repo, page, ref) {
   const fetchRef = page.startsWith('pr-') ? `pull/${page.slice(3)}/head` : (ref || await defaultBranch(repo));
   return { co: await checkout(repo, fetchRef), shown: ref || fetchRef };
 }
-function startDefine(repo, page, ref, mode, regenerate) {
+function startDefine(repo, page, ref, opMode, regenerate) {
   const origin = `${repo}:${page}`;
   const files = glossaryFiles(repo);
   return enqueue(`${repo}#${page}#define`, async (log, logPath) => {
     const t0 = Date.now();
+    const mode = config.outside; // the reader's outside mode, as it is when the run starts
     const { co, shown } = await pageCheckout(repo, page, ref);
     const runDir = runDirFor(`${repo}#${page}#define`);
-    const what = await gatherPage(repo, page, co, runDir, shown);
-    let cost = null;
+    const { target, outside, leftOut } = await gatherPage(repo, page, co, runDir, { ref, shown, mode });
+    if (outside) log(`outside page (mode ${mode})`);
+    let cost = null, notes = null;
     // Regenerate: the run does not see this page's terms, and they are replaced only if it succeeds.
-    const { ids, corrected, meta } = await defineWith(files, { repo, origin, full: mode === 'thorough', regenerate, ownerAllowed: ownerAllowed(repo), log }, async (glossary) => {
+    const { ids, corrected, meta } = await defineWith(files, { repo, origin, full: opMode === 'thorough', regenerate, ownerAllowed: ownerAllowed(repo), limited: limitedRun(mode, outside), mode, log }, async (glossary) => {
       writeJson(path.join(runDir, 'glossary.json'), glossary);
-      const prompt = [
-        `Run the ${mode === 'thorough' ? 'Thorough' : 'Quick'} operation on this GitHub page of ${repo}: ${what}.`,
-        `The working directory is a checkout of ${co.sha}. Run inputs are in ${runDir}; glossary.json holds the ${glossary.length} terms already defined.`,
-      ].join('\n');
-      const r = await claude(mode, { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
-      cost = r.cost;
-      return { out: r.out, meta: { origin, definedAt: new Date().toISOString(), ref: co.sha, model: r.model, spec: specVersion() } };
+      const prompt = runPrompt(opMode, { repo, target, sha: co.sha, runDir, terms: glossary.length });
+      const r = await claude(opMode, { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
+      cost = r.cost; notes = cutNote(r.out.notes);
+      return { out: r.out, meta: { origin, definedAt: new Date().toISOString(), ref: co.sha, model: r.model, spec: specVersion(), ...(outside ? { outside: true } : {}) } };
     });
     const pages = readJson(pagesPath(repo), {});
-    pages[page] = { lastRun: meta.definedAt, mode, model: meta.model, ref: co.sha, added: ids.length, corrected, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec };
+    pages[page] = { lastRun: meta.definedAt, mode: opMode, model: meta.model, ref: co.sha, added: ids.length, corrected, costUsd: cost, durationMs: Date.now() - t0, spec: meta.spec,
+      ...(outside ? { outside: true } : {}), ...(leftOut ? { leftOut } : {}), ...(notes ? { notes } : {}) };
     writeJson(pagesPath(repo), pages);
-    log(`done: ${ids.length} terms, ${corrected} corrections`);
+    log(`done: ${ids.length} terms, ${corrected} corrections${notes ? `; the run reported: ${notes}` : ''}`);
     return { added: ids.length, corrected };
   });
 }
 
 function startSelect(repo, page, ref, text, context) {
   const key = selectKey(repo, page, text);
+  const origin = `${repo}:${page}`;
   const job = enqueue(key, async (log, logPath) => {
     const t0 = Date.now();
+    const mode = config.outside;
     const { co, shown } = await pageCheckout(repo, page, ref);
     const runDir = runDirFor(key);
-    const what = await gatherPage(repo, page, co, runDir, shown);
-    writeJson(path.join(runDir, 'glossary.json'), glossaryForRun(glossaryFiles(repo)));
+    const { target, outside } = await gatherPage(repo, page, co, runDir, { ref, shown, mode });
+    writeJson(path.join(runDir, 'glossary.json'), glossaryForRun(glossaryFiles(repo), { repo, page: origin, mode }));
     writeJson(path.join(runDir, 'selection.json'), { text, context });
-    const prompt = [
-      `Run the Select operation on this GitHub page of ${repo}: ${what}.`,
-      `The reader selected the text and context in ${path.join(runDir, 'selection.json')}.`,
-      `The working directory is a checkout of ${co.sha}. Run inputs are in ${runDir}.`,
-    ].join('\n');
+    const prompt = runPrompt('select', { repo, target, sha: co.sha, runDir });
     const { out, model } = await claude('select', { repo, cwd: co.dir, prompt, addDir: runDir, logPath, log });
-    const meta = { origin: `${repo}:${page}`, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion(), selected: true };
-    const [termId] = storeTerms(glossaryFiles(repo), repo, [out.term], meta, log, { ownerAllowed: ownerAllowed(repo) });
-    if (!termId) throw new Error('the definition came back with an unusable pattern; try selecting a slightly different span');
-    log(`done: ${termId}`);
-    return { termId, durationMs: Date.now() - t0 };
+    const notes = cutNote(out.notes);
+    const meta = { origin, definedAt: new Date().toISOString(), ref: co.sha, model, spec: specVersion(), selected: true, ...(outside ? { outside: true } : {}) };
+    const [termId] = storeTerms(glossaryFiles(repo), repo, [out.term], meta, log, { ownerAllowed: ownerAllowed(repo), limited: limitedRun(mode, outside) });
+    if (!termId) throw new Error('the definition was not saved: its pattern is unusable, or its id belongs to a term from another page (the run\'s log says which). Try selecting a slightly different span');
+    log(`done: ${termId}${notes ? `; the run reported: ${notes}` : ''}`);
+    return { termId, durationMs: Date.now() - t0, ...(notes ? { notes } : {}) };
   });
   return { key, job };
 }
@@ -366,11 +367,12 @@ export async function handle({ method, path: p, query = {}, body = {} }) {
     const { page, ref } = await pageOf(query);
     if (!validPage(page)) return { code: 400, body: { error: 'bad page' } };
     const repo = query.repo;
+    const view = { owner: repo.split('/')[0], page: `${repo}:${page}`, mode: config.outside };
     return { code: 200, body: {
-      page, ref, glossary: { terms: mergedGlossary(glossaryFiles(repo)) },
+      page, ref, glossary: { terms: mergedGlossary(glossaryFiles(repo), view) },
       pageInfo: readJson(pagesPath(repo), {})[page] || null,
       defineJob: jobs.get(`${repo}#${page}#define`) || null,
-      modes: config.modes, allowed: isAllowed(config.allow, repo),
+      modes: config.modes, allowed: isAllowed(config.allow, repo), outsideMode: config.outside,
     } };
   }
   if (method === 'POST' && p === '/api/allow') {
@@ -390,6 +392,15 @@ export async function handle({ method, path: p, query = {}, body = {} }) {
     else return { code: 400, body: { error: 'bad scope' } };
     if (config.allow.owners.length + config.allow.repos.length !== before) { saveAllow(); hostLog(`removed ${body.scope} ${body.name} from the allowlist`); }
     return { code: 200, body: config.allow };
+  }
+  // How outside pages are treated: asked for by the popup only (the service worker passes it for no
+  // other sender).
+  if (method === 'POST' && p === '/api/outside') {
+    if (!OUTSIDE_MODES.includes(body.mode)) return { code: 400, body: { error: 'mode must be off, limit-writes or outside-pages' } };
+    config.outside = body.mode;
+    saveConfig({ outside: config.outside });
+    hostLog(`outside mode set to ${config.outside}`);
+    return { code: 200, body: { mode: config.outside } };
   }
   if (method === 'POST' && p === '/api/define') {
     if (!validRepo(body.repo)) return { code: 400, body: { error: 'bad repo' } };
