@@ -400,8 +400,9 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
 npm test
 ```
 
-No dependencies. After editing `assets/logo.svg`, run `npm run icons` to regenerate the extension
-icons.
+No dependencies. After editing `assets/logo.svg` (or `assets/logo-16.svg`, the version drawn for
+16 px), run `npm run icons` to regenerate the extension icons. It renders them with headless Chrome;
+set `CHROME` to the browser binary if it is not found.
 
 ## Files under `cache/` (not committed)
 
