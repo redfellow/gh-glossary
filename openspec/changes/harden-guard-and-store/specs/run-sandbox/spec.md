@@ -8,7 +8,8 @@ subcommand, written in full: short options may be bundled and may carry their va
 word, and each one is checked either way. A value given as the next word SHALL NOT start with `-`,
 and options that write a file, read outside the repository or run a program are refused wherever
 they appear. Its revision and path operands SHALL NOT be absolute, start with a drive letter, contain
-a `..` step in any part of a `rev:path`, or lead out of the checkout through a symbolic link.
+a `..` step in any part of a `rev:path`, or lead out of the checkout through a symbolic link. The
+same holds for the file named in a `-L <range>:<file>` value.
 
 #### Scenario: Abbreviated option
 - **WHEN** a run tries `git diff --out=/tmp/x`
@@ -36,6 +37,10 @@ a `..` step in any part of a `rev:path`, or lead out of the checkout through a s
 
 #### Scenario: Symbolic link out of the checkout
 - **WHEN** the repository commits `outlink` as a link to a folder outside it and a run names `outlink/secret`
+- **THEN** the call is refused
+
+#### Scenario: Line range in a file outside
+- **WHEN** a run tries `git log -L 1,1:../secret.txt`
 - **THEN** the call is refused
 
 #### Scenario: Revision range
@@ -72,6 +77,8 @@ repository.
 When the check has not been told the run's checkout and run folder, it SHALL refuse every call. It
 SHALL refuse a tool other than file reading and searching, the checked commands, and the run's own
 structured reply and task list, and a call it cannot parse, whatever the reader's own settings allow.
+A tool input of the wrong type, or any error while checking, SHALL be a refusal: the check never
+ends in a way Claude Code reads as a non-blocking hook error.
 
 #### Scenario: No roots
 - **WHEN** the check runs without its folders configured
@@ -83,6 +90,31 @@ structured reply and task list, and a call it cannot parse, whatever the reader'
 
 #### Scenario: Unreadable call
 - **WHEN** the check is given input that is not JSON
+- **THEN** the call is refused
+
+#### Scenario: Value of the wrong type
+- **WHEN** a run calls Read with `file_path: {}` or Grep with `path: [...]`
+- **THEN** the call is refused
+
+### Requirement: Files only inside the checkout and run folder
+A run SHALL read and search files only inside its checkout and its run folder, with symbolic links
+resolved before the check. The run's own tool permissions allow file reading only under those two
+folders, so a read elsewhere is refused even if the check does not run.
+
+#### Scenario: Path outside
+- **WHEN** a run tries to read a file in the reader's home folder
+- **THEN** the call is refused
+
+#### Scenario: Symlink out of the checkout
+- **WHEN** a file in the checkout is a symbolic link to a file outside it
+- **THEN** reading it is refused
+
+#### Scenario: Search pattern that climbs out
+- **WHEN** a file search pattern contains `..` or an absolute path outside the roots
+- **THEN** the call is refused
+
+#### Scenario: Check not running
+- **WHEN** a run's hook does not run and the run reads, searches or lists a folder outside its roots
 - **THEN** the call is refused
 
 ### Requirement: Message limits
@@ -97,3 +129,18 @@ extension sends gets an answer within two minutes.
 #### Scenario: Oversized request
 - **WHEN** a message of more than 4 MB arrives, followed by a normal one
 - **THEN** the first is dropped and logged, and the second is answered
+
+## ADDED Requirements
+
+### Requirement: A run does not start without its check
+The host SHALL turn hooks on for every run, over the reader's own settings. When managed settings
+turn hooks off or allow only managed hooks, the host SHALL NOT start the run and the page SHALL say
+why.
+
+#### Scenario: Reader turned hooks off
+- **WHEN** the reader's user settings set `disableAllHooks`
+- **THEN** a run still has its check
+
+#### Scenario: Organization allows only managed hooks
+- **WHEN** a managed settings file sets `allowManagedHooksOnly` or `disableAllHooks`
+- **THEN** no run starts, and the job error names the setting
