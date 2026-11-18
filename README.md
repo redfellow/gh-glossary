@@ -215,9 +215,11 @@ open the controls in the toolbar popup. The popup names the repository and page 
 - Runs keep going when the popup closes; the tab's dot shows them.
 
 **Select text to define it.** Select a word or phrase anywhere on the page (code view included),
-right-click it and choose **Define “…” with gh-glossary**. It defines just that, in about 10 seconds,
-and opens the definition when it is done. If it is already in the glossary, its definition opens
-without a run.
+right-click it and choose **Define “…” with gh-glossary**. It defines just that, in about 10 seconds;
+the words are marked in amber until then. You can define several in a row: they run one after another,
+and only the one you asked for last opens when it is done (the others are underlined). If it is
+already in the glossary, its definition opens without a run. If a Define cannot start (the repo is
+not allowed yet, or the selection is too long), a message beside the gh-glossary tab says why.
 
 ### Which repos Claude runs on
 
