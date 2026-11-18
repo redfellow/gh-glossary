@@ -1,0 +1,3 @@
+# Cards merge into this branch instead of the default branch; the default branch only receives promotions,
+# by a pull request a person merges. Remove the line to merge cards straight into the default branch.
+integration: hv/main
