@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Definitions for the terms on GitHub pages, written by Claude on your machine.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test \"assets/*.test.mjs\" \"extension/*.test.mjs\" \"host/*.test.mjs\"",
     "icons": "node assets/build-icons.mjs"
