@@ -30,6 +30,13 @@ const pageLabel = () => R.pr ? `pull request #${R.pr}` : R.kind === 'issue' ? `i
 // Send to Claude is offered on pull requests and on Markdown documents.
 const docPath = () => R?.kind === 'blob' && data?.page?.startsWith('file:') && /\.(?:md|mdx|markdown)$/i.test(data.page) ? data.page.slice(5) : null;
 const canSend = () => !!R && (!!R.pr || !!docPath());
+// How pages by people who cannot write to the repository are treated (openspec/specs/outside-content).
+// The host keeps the choice; only this popup can change it.
+const OUTSIDE = [
+  ['off', 'Off', 'Such pages are treated like any other'],
+  ['limit-writes', 'Limit writes', 'A run on such a page changes no other page\'s terms and adds no owner terms'],
+  ['outside-pages', 'Outside pages', 'Also: its terms show only on that page, and comments by such people are not read'],
+];
 
 function statusLines() {
   const lines = [];
@@ -47,6 +54,9 @@ function statusLines() {
   if (pi) {
     const here = terms.filter((t) => t.origin === `${R.repo}:${data.page}`).length;
     lines.push({ text: `${here} terms from this page${pi.corrected ? `, ${pi.corrected} corrected` : ''} · ${new Date(pi.lastRun).toLocaleDateString()} · ${esc(pi.model || pi.mode)}${took(pi.durationMs)}` });
+    const left = Number(pi.leftOut) || 0;
+    if (left) lines.push({ text: `${left} comment${left === 1 ? '' : 's'} by outside contributors ${left === 1 ? 'was' : 'were'} not read.` });
+    if (pi.notes) lines.push({ text: `The run reported: ${esc(pi.notes)}` });
   } else if (!busy(dj)) lines.push({ text: `This page has not been defined yet. ${terms.length} terms known for this repo.` });
   if (!data.allowed) lines.push({ text: 'Not on your allowlist yet: Quick or Thorough asks first.' });
   return lines;
@@ -83,6 +93,8 @@ function render() {
       <button class="btn" data-define="thorough" ${dis} title="${esc(modeLabel('thorough'))}, about 5 min">Thorough</button>
       <label class="chk" title="Define this page again. Its terms are replaced when the run succeeds; terms you defined by selection are kept"><input type="checkbox" data-regen ${regen ? 'checked' : ''} ${data?.pageInfo ? '' : 'disabled'}>Regenerate</label></div>
     ${canSend() ? `<div class="row"><button class="btn" data-claude title="Open a new Claude Code session in the Claude desktop app with this ${R.pr ? 'pull request' : 'document'} in the composer">Send to Claude</button></div>` : ''}
+    <div class="row"><label class="lbl" for="outside" title="Pages opened by people who are not an owner, member or collaborator of the repository, and pull requests from forks">Outside contributors:</label>
+      <select class="sel" id="outside" data-outside ${data ? '' : 'disabled'}>${OUTSIDE.map(([v, label, tip]) => `<option value="${v}" title="${esc(tip)}" ${(data?.outsideMode || 'off') === v ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
     <div class="status">${statusLines().map((l) => `<div class="${l.tone || ''}">${l.text}</div>`).join('')}</div>`;
 }
 
@@ -90,6 +102,7 @@ async function refresh() {
   if (ask) return; // the question stays as it is until it is answered
   try { data = await api('GET', '/api/page', pageQuery(R)); error = null; } catch (e) { data = null; error = e; }
   try { status = (await chrome.tabs.sendMessage(tab.id, { type: 'page-info' }))?.status || null; } catch { status = null; }
+  if (document.activeElement?.matches?.('[data-outside]')) return; // drawing again would close the open list
   render();
 }
 
@@ -127,7 +140,17 @@ main.addEventListener('click', async (e) => {
     render();
   }
 });
-main.addEventListener('change', (e) => { if (e.target.matches('[data-regen]')) { regen = e.target.checked; render(); } });
+main.addEventListener('change', async (e) => {
+  if (e.target.matches('[data-regen]')) { regen = e.target.checked; render(); return; }
+  if (e.target.matches('[data-outside]')) {
+    const mode = e.target.value;
+    e.target.blur();
+    const r = await send({ type: 'set-outside', mode });
+    notice = r?.code === 200 ? null : { text: esc(r?.body?.error || 'Could not save the choice.'), tone: 'bad' };
+    chrome.tabs.sendMessage(tab.id, { type: 'reload' }).catch(() => {}); // the page's terms depend on the mode
+    await refresh();
+  }
+});
 
 (async () => {
   try { ({ defs: defsOn = true } = await chrome.storage.local.get('defs')); } catch {}

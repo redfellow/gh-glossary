@@ -6,7 +6,7 @@ const { esc, matcher } = globalThis.ghl;
 const nonce = location.hash.slice(1);
 const box = document.getElementById('box');
 
-let repo = '', M = matcher([]), TERM = Object.create(null);
+let repo = '', outsideMode = 'off', M = matcher([]), TERM = Object.create(null);
 let stack = [], pinned = false, seq = 0;
 
 const tell = (event, value) => { chrome.runtime.sendMessage({ type: 'pop-event', nonce, event, value }).catch(() => {}); };
@@ -34,14 +34,16 @@ function originLink(t) {
   return `from <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>${esc(other)}${sha ? ` at ${esc(sha)}` : ''}`;
 }
 // A run may write any link, and a run can be prompt-injected, so a link could carry what the run read
-// off to another site. Only https, no query or fragment, a path of at most LINK_PATH characters (a
-// longer one is dropped and the link goes to the site's front page), and the box shows the whole
-// address it opens, host and path, so nothing travels in it unseen.
+// off to another site. Only https on github.com under the owner of the page's repository (the host
+// checks the same), no query or fragment, a path of at most LINK_PATH characters (a longer one is
+// dropped and the link goes to GitHub's front page), and the box shows the whole address it opens,
+// host and path, so nothing travels in it unseen.
 const LINK_PATH = 120;
-function linkOf(raw) {
-  if (typeof raw !== 'string' || raw.length > 500) return null;
+function linkOf(raw, owner) {
+  if (typeof raw !== 'string' || raw.length > 500 || !owner) return null;
   let u; try { u = new URL(raw); } catch { return null; }
-  if (u.protocol !== 'https:' || u.username || u.password) return null;
+  if (u.protocol !== 'https:' || u.host !== 'github.com' || u.username || u.password) return null;
+  if ((u.pathname.split('/')[1] || '').toLowerCase() !== String(owner).toLowerCase()) return null;
   u.search = ''; u.hash = '';
   if (u.pathname.length > LINK_PATH) u.pathname = '/';
   const shown = u.host + (u.pathname === '/' ? '' : u.pathname);
@@ -71,13 +73,18 @@ function renderPop() {
   const g = top && TERM[top];
   if (!g) { box.hidden = true; return; }
   const head = `<span class="kind">Definition</span>${g.category ? `<span class="layer">${esc(g.category)}</span>` : ''}<span class="layer ${g.layer === 'org' ? 'org' : ''}">${layerLabel(g)}</span>`;
-  const safeLink = linkOf(g.link);
+  const safeLink = linkOf(g.link, repo.split('/')[0]);
   const body = `<div class="pt">${esc(g.term)}</div>${g.where ? `<div class="where">${esc(g.where)}</div>` : ''}<div class="pdef">${fmt(g.def)}</div>
     ${safeLink ? `<div style="margin-top:8px"><a href="${esc(safeLink.href)}" target="_blank" rel="noopener noreferrer" class="link">Open ${esc(safeLink.shown)}</a></div>` : ''}`;
   const when = g.definedAt ? new Date(g.definedAt).toLocaleDateString() : '';
-  const checked = g.verified === true ? 'Verified at source' : g.verified === false ? 'Not verified at source' : '';
+  // While the reader limits outside pages, a term from one says so and makes no claim of having been
+  // checked: "verified" is the run's own word.
+  const fromOutside = g.outside === true && outsideMode !== 'off';
+  const specV = g.spec ? ` · spec v${esc(g.spec)}` : '';
+  const checked = fromOutside ? `From an outside contributor's page${specV}`
+    : g.verified === true ? `Verified at source${specV}` : g.verified === false ? `Not verified at source${specV}` : '';
   const revised = g.revisedAt ? `<br>Revised ${esc(new Date(g.revisedAt).toLocaleDateString())}: ${esc(g.revisionReason || '')}` : '';
-  const prov = `<div class="prov">${g.selected ? 'You asked · ' : ''}Defined ${esc(when)} ${originLink(g)}${g.model ? ` · ${esc(g.model)}` : ''}${checked ? `<br>${checked}${g.spec ? ` · spec v${esc(g.spec)}` : ''}` : ''}${revised}</div>`;
+  const prov = `<div class="prov">${g.selected ? 'You asked · ' : ''}Defined ${esc(when)} ${originLink(g)}${g.model ? ` · ${esc(g.model)}` : ''}${checked ? `<br>${checked}` : ''}${revised}</div>`;
   const trail = stack.length > 1 ? `<div class="crumbs">${stack.map((id) => esc(TERM[id]?.term || id)).join(' › ')}</div>` : '';
   box.innerHTML = `<div class="ph">${head}<span class="sp"></span>${stack.length > 1 ? '<button data-act="back">← Back</button>' : ''}${pinned ? '<button data-act="close" aria-label="Close">✕</button>' : ''}</div>
     <div class="pb">${body}</div>${prov}${trail}${pinned ? '' : '<div class="hint">Click to pin and follow linked terms.</div>'}`;
@@ -91,6 +98,7 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (sender.id !== chrome.runtime.id || m?.nonce !== nonce) return false;
   if (m.type === 'pop-glossary') {
     repo = String(m.repo || '');
+    outsideMode = ['limit-writes', 'outside-pages'].includes(m.outsideMode) ? m.outsideMode : 'off';
     const terms = Array.isArray(m.terms) ? m.terms : [];
     M = matcher(terms); TERM = M.byId;
     document.documentElement.classList.toggle('dark', !!m.dark);

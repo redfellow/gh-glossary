@@ -65,24 +65,53 @@ test('The definition frame is an extension page the page cannot address', () => 
 });
 
 test('Glossary text is escaped before it becomes HTML, in the frame', () => {
-  const pop = from(popover, 'function renderPop()', 1600);
+  const pop = from(popover, 'function renderPop()', 2400);
   for (const f of ['g.term', 'g.where', 'g.category', 'g.revisionReason']) assert.ok(pop.includes(`esc(${f}`), f);
   assert.ok(pop.includes('fmt(g.def)'));
   assert.match(from(popover, 'function fmt(s)', 300), /let out = esc\(s\)/);
   assert.match(from(popover, 'function fmt(s)', 500), /esc\(TERM\[id\]\.term\)/);
-  assert.match(pop, /const safeLink = linkOf\(g\.link\)/, 'links go through linkOf');
+  assert.match(pop, /const safeLink = linkOf\(g\.link, repo\.split\('\/'\)\[0\]\)/, 'links go through linkOf, with the owner of the page\'s repository');
   assert.match(pop, /rel="noopener noreferrer" class="link">Open \$\{esc\(safeLink\.shown\)\}/, 'the box shows the whole address it opens');
-  const lo = from(popover, 'function linkOf(raw)', 600);
+  const lo = from(popover, 'function linkOf(raw, owner)', 700);
   assert.match(lo, /u\.protocol !== 'https:'/); assert.match(lo, /u\.search = ''; u\.hash = '';/);
   assert.match(lo, /if \(u\.pathname\.length > LINK_PATH\) u\.pathname = '\/';/, 'a long path is dropped');
   // linkOf itself, run on the addresses an injected run would write.
-  const linkOf = new Function(`${from(popover, 'const LINK_PATH', 900).split('// Other known terms')[0]}; return linkOf;`)();
-  assert.deepEqual(linkOf('https://docs.example.com/guide/x?d=secret#y'), { href: 'https://docs.example.com/guide/x', host: 'docs.example.com', shown: 'docs.example.com/guide/x' });
-  assert.equal(linkOf(`https://docs.attacker.example/${'QUJD'.repeat(40)}`).href, 'https://docs.attacker.example/');
-  assert.equal(linkOf('http://example.com/'), null); assert.equal(linkOf('https://u:p@example.com/'), null);
+  const linkOf = new Function(`${from(popover, 'const LINK_PATH', 1000).split('// Other known terms')[0]}; return linkOf;`)();
+  assert.deepEqual(linkOf('https://github.com/acme/widgets/issues/34?d=secret#x', 'acme'), { href: 'https://github.com/acme/widgets/issues/34', host: 'github.com', shown: 'github.com/acme/widgets/issues/34' });
+  assert.deepEqual(linkOf(`https://github.com/acme/${'QUJD'.repeat(40)}`, 'acme'), { href: 'https://github.com/', host: 'github.com', shown: 'github.com' }, 'data in a long path is dropped');
+  assert.equal(linkOf('https://GitHub.com/Acme/widgets/pull/2', 'acme').href, 'https://github.com/Acme/widgets/pull/2', 'the owner in any letter case');
+  for (const other of ['https://docs.attacker.example/x', 'https://www.rfc-editor.org/rfc/rfc9728', 'https://github.com/someone-else/notes', 'https://github.com/acme/../someone-else/notes',
+    'https://github.com.attacker.example/acme/x', 'https://gist.github.com/acme/x', 'https://github.com:8443/acme/x', 'http://github.com/acme/x', 'https://u:p@github.com/acme/x', 'javascript:alert(1)', 'acme/widgets']) {
+    assert.equal(linkOf(other, 'acme'), null, other);
+  }
+  assert.equal(linkOf('https://github.com/acme/widgets', ''), null, 'no owner known: no link');
   // Only two HTML writes in the content script: the shadow root's fixed markup and the tab's badge.
   assert.deepEqual([...content.matchAll(/(\w+)\.innerHTML = /g)].map((m) => m[1]), ['root', 'tab']);
   assert.match(content, /tab\.innerHTML = `<div class="badge">\$\{dot \? `<span class="dot \$\{dot\}"><\/span>` : ''\}<span>gh-glossary<\/span>\$\{n \?/);
+});
+
+test('A term from an outside page says so, and claims no verification, while the reader limits outside pages', () => {
+  const pop = from(popover, 'function renderPop()', 2400);
+  assert.match(pop, /const fromOutside = g\.outside === true && outsideMode !== 'off';/);
+  assert.match(pop, /const checked = fromOutside \? `From an outside contributor's page\$\{specV\}`\s*: g\.verified === true \?/, 'the outside line takes the place of the verification line');
+  assert.match(from(popover, "m.type === 'pop-glossary'", 300), /outsideMode = \['limit-writes', 'outside-pages'\]\.includes\(m\.outsideMode\) \? m\.outsideMode : 'off';/);
+  assert.match(content, /type: 'pop-glossary', nonce, repo: R\?\.repo \|\| '', dark: pageIsDark\(\), outsideMode: data\?\.outsideMode \|\| 'off'/, 'the content script passes the host\'s mode on');
+  assert.match(content, /const sig = \(x\) => JSON\.stringify\(\[x\?\.outsideMode \?\? null, x\?\.glossary\?\.terms \?\? null\]\);/, 'a mode change redraws');
+});
+
+test('The popup shows what a run reported and how many comments were left out, as text', () => {
+  const lines = from(popup, 'function statusLines()', 2200);
+  assert.match(lines, /if \(pi\.notes\) lines\.push\(\{ text: `The run reported: \$\{esc\(pi\.notes\)\}` \}\);/);
+  assert.match(lines, /const left = Number\(pi\.leftOut\) \|\| 0;/, 'a number, never markup');
+  assert.match(lines, /by outside contributors \$\{left === 1 \? 'was' : 'were'\} not read\./);
+  assert.match(from(content, 'async function trackSelect()', 1800), /done\.push\(\{ j, termId: job\.result\?\.termId, notes: job\.result\?\.notes \}\)/, 'a Select run\'s note reaches the tab\'s message');
+});
+
+test('The popup offers the three outside modes and sends the choice as its own request', () => {
+  assert.deepEqual([...from(popup, 'const OUTSIDE = [', 500).matchAll(/\['([a-z-]+)', '([^']+)'/g)].map((m) => [m[1], m[2]]), [['off', 'Off'], ['limit-writes', 'Limit writes'], ['outside-pages', 'Outside pages']]);
+  assert.match(popup, /send\(\{ type: 'set-outside', mode \}\)/);
+  assert.match(popup, /\(data\?\.outsideMode \|\| 'off'\) === v \? 'selected' : ''/, 'the list shows the host\'s mode');
+  for (const src of [content, read('options.js')]) assert.ok(!src.includes('set-outside') && !src.includes('/api/outside'), 'neither the content script nor the options page asks');
 });
 
 test('Send to Claude is offered in the popup, on pull requests and Markdown documents only', () => {
