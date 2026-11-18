@@ -80,3 +80,41 @@ export function folderName(name, platform = process.platform) {
 export function samePath(a, b, platform = process.platform) {
   return platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
+
+// A Claude Code permission rule for everything under an absolute folder: Read(//abs/path/**). Claude
+// Code writes Windows paths in POSIX form, C:\Users\x as //c/Users/x.
+export function readRule(dir, platform = process.platform) {
+  let p = String(dir);
+  if (platform === 'win32') p = p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`);
+  if (!p.startsWith('/') || /[(),]/.test(p)) throw new Error(`cannot write a permission rule for ${dir}`);
+  return `Read(/${p.replace(/\/+$/, '')}/**)`;
+}
+
+// Managed settings files, which the host's own --settings cannot override. MDM profiles, the Windows
+// registry and server-managed settings are not files and are not read here.
+export function managedSettingsFiles(platform = process.platform, { exists = fs.existsSync, list = (d) => fs.readdirSync(d) } = {}) {
+  const dirs = platform === 'darwin' ? ['/Library/Application Support/ClaudeCode']
+    : platform === 'win32' ? ['C:\\Program Files\\ClaudeCode', 'C:\\ProgramData\\ClaudeCode']
+    : ['/etc/claude-code'];
+  const j = platform === 'win32' ? path.win32.join : path.posix.join;
+  const files = [];
+  for (const d of dirs) {
+    files.push(j(d, 'managed-settings.json'));
+    const drop = j(d, 'managed-settings.d');
+    try { if (exists(drop)) files.push(...list(drop).filter((f) => f.endsWith('.json')).sort().map((f) => j(drop, f))); } catch {}
+  }
+  return files;
+}
+
+// Why the guard hook would not run, or null. The host's --settings sets disableAllHooks: false, which
+// wins over the reader's own settings; managed settings win over it, so a managed disableAllHooks or
+// allowManagedHooksOnly (only managed hooks run) leaves a run without its guard.
+export function hooksOffReason(files, read = (f) => fs.readFileSync(f, 'utf8')) {
+  for (const f of files) {
+    let s;
+    try { s = JSON.parse(read(f)); } catch { continue; }
+    if (s?.disableAllHooks === true) return `${f} sets disableAllHooks`;
+    if (s?.allowManagedHooksOnly === true) return `${f} sets allowManagedHooksOnly`;
+  }
+  return null;
+}
