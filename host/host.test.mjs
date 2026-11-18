@@ -14,7 +14,9 @@ const REPO_ROOT = path.join(HERE, '..');
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ghg-host-')));
 fs.mkdirSync(path.join(root, 'host'));
 for (const f of fs.readdirSync(HERE).filter((x) => x.endsWith('.mjs') && !x.endsWith('.test.mjs'))) fs.copyFileSync(path.join(HERE, f), path.join(root, 'host', f));
-for (const d of ['schema', path.join('openspec', 'specs', 'term-definition'), path.join('.claude', 'skills')]) fs.cpSync(path.join(REPO_ROOT, d), path.join(root, d), { recursive: true });
+// The three run skills only: the other entries of .claude/skills are links, which Windows may refuse to copy.
+const skills = fs.readdirSync(path.join(REPO_ROOT, '.claude', 'skills')).filter((x) => x.startsWith('gh-glossary-')).map((x) => path.join('.claude', 'skills', x));
+for (const d of ['schema', path.join('openspec', 'specs', 'term-definition'), ...skills]) fs.cpSync(path.join(REPO_ROOT, d), path.join(root, d), { recursive: true });
 const CONFIG = path.join(root, 'config.json');
 fs.writeFileSync(CONFIG, JSON.stringify({ maxMinutes: 5, allow: { owners: [], repos: ['octo-org/widgets'] } }));
 const { handle } = await import(pathToFileURL(path.join(root, 'host', 'host.mjs')).href);
