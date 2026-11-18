@@ -318,7 +318,11 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
   redirects or globs), only the git and gh options on the guard's list for each command (so nothing
   that writes files, reads files it names or starts a program, such as `--output` or `git grep -O`),
   no absolute paths or `..` in git arguments, and `gh` only on the page's own repository, never
-  `--web` or `--jq`. Any other tool is refused, even if your own settings allow it.
+  `--web` or `--jq`. Any other tool is refused, even if your own settings allow it, and an error in
+  the check is a refusal too. File reading is also limited to the run's two folders by the run's own
+  tool permissions, so it stays there even without the guard.
+- The run turns hooks on over your own `disableAllHooks`. If managed settings turn hooks off or allow
+  only managed hooks, no run starts and the page says why.
 - Only your user settings are loaded, so hooks or settings committed in the repo do not run. MCP
   servers and Chrome are off for the run. Web tools, Write and Edit are off.
 - The extension escapes everything Claude wrote before showing it. A definition's link must be

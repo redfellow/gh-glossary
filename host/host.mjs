@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { frames, reader } from './native.mjs';
 import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rules.mjs';
 import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
-import { resolveCommand, hookCommand, stopTree, folderName, samePath } from './platform.mjs';
+import { resolveCommand, hookCommand, stopTree, folderName, samePath, readRule, managedSettingsFiles, hooksOffReason } from './platform.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, 'cache');
@@ -72,8 +72,9 @@ function saveAllow() {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
 }
 
-const READ_ONLY_TOOLS = [
-  'Read', 'Grep', 'Glob',
+// File reading is allowed only under the run's roots (readRule, which also covers Grep and Glob), so a
+// run that somehow lost its guard still cannot read elsewhere. The commands are checked by the guard.
+const READ_ONLY_COMMANDS = [
   'Bash(gh pr view:*)', 'Bash(gh pr diff:*)', 'Bash(gh pr checks:*)', 'Bash(gh issue view:*)',
   'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)', 'Bash(git grep:*)', 'Bash(git blame:*)',
   'Bash(git status:*)', 'Bash(git ls-files:*)',
@@ -229,7 +230,12 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const { model, effort } = config.modes[op];
   const system = path.join(addDir, 'system.md');
   fs.writeFileSync(system, `${fs.readFileSync(SPEC_PATH, 'utf8')}\n\n---\n\n${fs.readFileSync(SKILLS[op], 'utf8')}`);
-  const settings = { hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(process.execPath, GUARD) }] }] } };
+  // The guard is the run's one barrier, so the run does not start without it. disableAllHooks: false
+  // here wins over the reader's own settings; managed settings cannot be overridden and are checked.
+  const off = hooksOffReason(managedSettingsFiles());
+  if (off) throw new Error(`Claude Code hooks are turned off (${off}), so gh-glossary cannot guard a run and will not start one.`);
+  const settings = { disableAllHooks: false, hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(process.execPath, GUARD) }] }] } };
+  const roots = [cwd, addDir].map((d) => fs.realpathSync(d));
   const args = [
     '-p', '--model', model, '--effort', effort,
     '--output-format', 'json', '--json-schema', SCHEMAS[op],
@@ -238,7 +244,7 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
     '--strict-mcp-config', '--no-chrome', '--no-session-persistence',
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
     '--add-dir', addDir,
-    '--allowedTools', READ_ONLY_TOOLS.join(','),
+    '--allowedTools', [...roots.map((d) => readRule(d)), ...READ_ONLY_COMMANDS].join(','),
     '--disallowedTools', 'WebFetch,WebSearch,Write,Edit,NotebookEdit',
   ];
   if (config.maxBudgetUsd) args.push('--max-budget-usd', String(config.maxBudgetUsd));

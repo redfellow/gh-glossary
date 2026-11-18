@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { which, shimTarget, resolveCommand, hookCommand, folderName, samePath } from './platform.mjs';
+import { which, shimTarget, resolveCommand, hookCommand, folderName, samePath, readRule, managedSettingsFiles, hooksOffReason } from './platform.mjs';
 
 // A fake Windows disk: the files that exist and what the batch files say.
 const files = {
@@ -83,4 +83,27 @@ test('folder names Windows would refuse get "_" there only', () => {
 test('samePath ignores case on Windows only', () => {
   assert.ok(samePath('c:\\x\\host.mjs', 'C:\\X\\host.mjs', 'win32'));
   assert.ok(!samePath('/x/host.mjs', '/X/host.mjs', 'linux'));
+});
+
+test('Read rules name the run\'s folders the way Claude Code writes absolute paths', () => {
+  assert.equal(readRule('/Users/me/gh-glossary/cache/repos/o/r', 'darwin'), 'Read(//Users/me/gh-glossary/cache/repos/o/r/**)');
+  assert.equal(readRule('/srv/x/', 'linux'), 'Read(//srv/x/**)');
+  assert.equal(readRule('C:\\Users\\me\\gh-glossary\\cache\\runs\\a', 'win32'), 'Read(//c/Users/me/gh-glossary/cache/runs/a/**)');
+  for (const bad of ['relative/x', '/a,b', '/a(b)']) assert.throws(() => readRule(bad, 'linux'), bad);
+});
+
+test('Managed settings that turn hooks off are found; anything else is not a reason', () => {
+  const disk = {
+    '/etc/claude-code/managed-settings.json': '{"permissions":{}}',
+    '/etc/claude-code/managed-settings.d/10-hooks.json': '{"allowManagedHooksOnly":true}',
+  };
+  const files = managedSettingsFiles('linux', { exists: (d) => d === '/etc/claude-code/managed-settings.d', list: () => ['10-hooks.json', 'notes.txt'] });
+  assert.deepEqual(files, ['/etc/claude-code/managed-settings.json', '/etc/claude-code/managed-settings.d/10-hooks.json']);
+  const read = (f) => { if (!(f in disk)) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return disk[f]; };
+  assert.match(hooksOffReason(files, read), /10-hooks\.json sets allowManagedHooksOnly/);
+  assert.match(hooksOffReason(['/m.json'], () => '{"disableAllHooks":true}'), /disableAllHooks/);
+  assert.equal(hooksOffReason(['/m.json'], () => '{"disableAllHooks":false}'), null);
+  assert.equal(hooksOffReason(['/m.json'], () => 'not json'), null);
+  assert.equal(hooksOffReason(['/missing.json'], read), null);
+  assert.deepEqual(managedSettingsFiles('darwin', { exists: () => false }), ['/Library/Application Support/ClaudeCode/managed-settings.json']);
 });
