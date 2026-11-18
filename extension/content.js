@@ -56,8 +56,8 @@
     html.ghl-hover-term, html.ghl-hover-term * { cursor: help !important; }
     ::highlight(ghl-term) { text-decoration: underline dotted var(--fgColor-accent, #0969da); text-decoration-thickness: 1.5px; }
     ::highlight(ghl-active) { background-color: var(--bgColor-accent-muted, rgba(84,174,255,.2)); }
-    ::highlight(ghl-pending) { background-color: var(--bgColor-attention-muted, rgba(212,167,44,.4)); }
-    ::highlight(ghl-pending-dim) { background-color: color-mix(in srgb, var(--bgColor-attention-muted, rgba(212,167,44,.4)) 35%, transparent); }`);
+    ::highlight(ghl-pending) { background-color: color-mix(in srgb, var(--bgColor-attention-emphasis, #9e6a03) 60%, transparent); text-decoration: underline wavy var(--fgColor-attention, #9a6700); text-decoration-thickness: 1.5px; }
+    ::highlight(ghl-pending-dim) { background-color: color-mix(in srgb, var(--bgColor-attention-emphasis, #9e6a03) 22%, transparent); text-decoration: underline wavy var(--fgColor-attention, #9a6700); text-decoration-thickness: 1.5px; }`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 
   // ---------- the tab and the definition frame, in a closed shadow root ----------
@@ -472,6 +472,8 @@
     if (m?.type === 'select-started' && pendingSels.has(m.text)) {
       const p = pendingSels.get(m.text); pendingSels.delete(m.text);
       if (!selJobs.some((j) => j.key === m.key)) selJobs.push({ key: m.key, text: p.text, startedAt: Date.now(), rect: p.rect, range: p.range || null, n: p.n, state: 'queued' });
+      // The browser's own selection colour would cover the pending highlight.
+      if (p.range && window.getSelection()?.toString().trim() === p.text) window.getSelection().removeAllRanges();
       note = null; renderPending(); renderTab(); trackSelect(); return false;
     }
     if (m?.type === 'note') { note = { text: String(m.text || ''), tone: m.tone === 'bad' ? 'bad' : '' }; renderTab(); return false; }
