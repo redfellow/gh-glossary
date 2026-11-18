@@ -5,3 +5,12 @@ x-harvaaja-card: c051d824-581b-455c-bfb9-0869b1c01030
 x-harvaaja-owner: b480b8ae-9b42-451b-865d-ff78d89e33ad
 x-harvaaja-owner-name: Sohvamäkki
 x-harvaaja-owner-person: Reijo
+route:
+  kind: no-spec-change
+  rationale: Tooling metadata only (engines field); no user-observable extension
+    behaviour, no spec covers build tooling. Card wants tasks with proofs, so
+    no-spec-change rather than chore.
+  citations:
+    - package.json
+    - openspec/specs (no capability covers tooling)
+  revision: 4f5bb246-f6dd-40b8-8824-e2e0314983b5
