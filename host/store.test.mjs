@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkPattern, mergedGlossary, storeTerms, applyCorrections, glossaryForRun, defineWith, readJson, writeJson, LIMITS } from './store.mjs';
+import { checkPattern, slowOnProbes, mergedGlossary, storeTerms, applyCorrections, glossaryForRun, defineWith, readJson, writeJson, LIMITS } from './store.mjs';
 import { selectKey } from './rules.mjs';
 
 const REPO = 'octo-org/widgets';
@@ -230,6 +230,19 @@ test('Pattern checks: a chain of optional parts is refused before it can freeze 
   for (const p of ['ORDER BY dist(?: ASC)?(?:,? ?LIMIT 1)?', '`?\\bconsumer`? \\+ `?producer`? scopes\\b', '\\bre-?extract(?:ion|ions|ed|ing)?\\b|\\breprocess(?:es|ed|ing)?\\b']) {
     assert.equal(checkPattern(p), null, p);
   }
+});
+
+test('Pattern checks: one stalled probe does not refuse a pattern, two in a row do', () => {
+  const tries = (results) => { const seen = []; return [seen, (src) => { seen.push(src); return results.shift(); }]; };
+  let [seen, probe] = tries([true, false]);
+  assert.equal(slowOnProbes('\\brelay\\b', probe), false, 'a stall, then a fast run: kept');
+  assert.equal(seen.length, 2);
+  [seen, probe] = tries([true, true]);
+  assert.equal(slowOnProbes('\\brelay\\b', probe), true, 'over the limit twice: refused');
+  [seen, probe] = tries([false]);
+  assert.equal(slowOnProbes('\\brelay\\b', probe), false, 'fast the first time: probed once');
+  assert.equal(seen.length, 1);
+  assert.equal(slowOnProbes('\\brelay\\b'), false, 'the real probe passes a plain pattern');
 });
 
 test('A run saves at most LIMITS.terms terms, and over-long fields drop the term', () => {
