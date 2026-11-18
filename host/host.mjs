@@ -19,12 +19,14 @@
 // each operation's steps are in .claude/skills/.
 
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frames, reader } from './native.mjs';
 import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rules.mjs';
+import { guardRan } from './guard.mjs';
 import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
 import { resolveCommand, hookCommand, stopTree, folderName, samePath, readRule, managedSettingsFiles, hooksOffReason } from './platform.mjs';
 
@@ -249,8 +251,21 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   ];
   if (config.maxBudgetUsd) args.push('--max-budget-usd', String(config.maxBudgetUsd));
   log(`claude ${op} ${model}/${effort} spec ${specVersion()} in ${cwd}`);
-  const env = { GHG_ROOTS: JSON.stringify([cwd, addDir]), GHG_REPO: repo };
-  const raw = await run('claude', args, { cwd, input: prompt, env, timeoutMs: config.maxMinutes * 60_000 });
+  // The guard marks every call it checks in a file outside the run's folders, at a path the run cannot
+  // guess. No mark means the guard never ran (hooks turned off by settings the host cannot read), and
+  // the run's output is discarded before anything is stored.
+  const marks = path.join(CACHE, 'guard-marks');
+  fs.mkdirSync(marks, { recursive: true, mode: 0o700 });
+  const mark = path.join(marks, `${crypto.randomBytes(16).toString('hex')}.log`);
+  const env = { GHG_ROOTS: JSON.stringify([cwd, addDir]), GHG_REPO: repo, GHG_MARK: mark };
+  let raw, guarded = false;
+  try {
+    raw = await run('claude', args, { cwd, input: prompt, env, timeoutMs: config.maxMinutes * 60_000 });
+    guarded = guardRan(mark);
+  } finally {
+    fs.rmSync(mark, { force: true });
+  }
+  if (!guarded) throw new Error('the guard did not run for this run, so its result was discarded. Check whether Claude Code hooks are turned off (disableAllHooks or allowManagedHooksOnly) in managed settings.');
   fs.writeFileSync(logPath.replace(/\.log$/, '.result.json'), raw);
   const res = JSON.parse(raw);
   if (res.is_error || !res.structured_output) throw new Error(`claude returned no result (${res.subtype || 'unknown'})`);

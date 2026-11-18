@@ -53,7 +53,8 @@ and smaller issues in links, blob lookups, message framing and URL decoding.
   own repository unless the owner is allowed.
 - Any error in the guard is a refusal; `git log -L` values are checked as paths.
 - A run's file reading is limited to its roots by its tool permissions too, its hooks are turned on
-  over the reader's settings, and no run starts when managed settings turn hooks off.
+  over the reader's settings, no run starts when managed settings turn hooks off, and a run whose
+  guard never ran is discarded.
 
 ## Capabilities
 
