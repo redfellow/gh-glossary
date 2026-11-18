@@ -138,7 +138,7 @@ test('A regenerating run is handed the glossary without the page\'s own terms, s
   assert.deepEqual(got, ['cache', 'other']);
   assert.deepEqual(glossaryForRun(files).map((t) => t.id).sort(), ['cache', 'hub', 'other', 'relay'], 'an ordinary run sees everything');
   assert.deepEqual(Object.keys(glossaryForRun(files)[0]).sort(), ['id', 'layer', 'pattern', 'term']);
-  assert.ok('def' in glossaryForRun(files, { full: true })[0], 'Thorough gets definitions');
+  assert.ok('def' in glossaryForRun(files, { full: true, repo: REPO })[0], 'Thorough gets definitions');
 });
 
 test('Regenerate succeeds: the page\'s earlier terms are removed and the run\'s terms replace them', async () => {
@@ -241,4 +241,118 @@ test('A run saves at most LIMITS.terms terms, and over-long fields drop the term
   const { gadgets } = fresh();
   storeTerms(gadgets, 'octo-org/gadgets', [term('big', { def: 'x'.repeat(LIMITS.def + 1) }), term('far', { link: `https://example.com/${'a'.repeat(LIMITS.link)}` }), term('ok')], META, quiet);
   assert.deepEqual(ids(gadgets.repo), ['ok']);
+});
+
+test('Thorough is given an owner term from another repository in full only when the whole owner is allowed', () => {
+  const { widgets, gadgets } = fresh();
+  storeTerms(widgets, REPO, [term('hub', { layer: 'org' })], META, quiet, OWNER);
+  storeTerms(gadgets, 'octo-org/gadgets', [term('local')], { ...META, origin: 'octo-org/gadgets:pr-1' }, quiet);
+  const given = (o) => Object.fromEntries(glossaryForRun(gadgets, { full: true, repo: 'octo-org/gadgets', ...o }).map((t) => [t.id, t]));
+  assert.deepEqual(Object.keys(given({}).hub).sort(), ['id', 'layer', 'pattern', 'term'], 'no definition from the other repository');
+  assert.equal(given({}).local.def, 'What local is.', 'its own terms in full');
+  assert.equal(given({ ownerAllowed: true }).hub.def, 'What hub is.');
+  assert.equal(glossaryForRun(widgets, { full: true, repo: REPO }).find((t) => t.id === 'hub').def, 'What hub is.', 'the repository that defined it gets it in full');
+});
+
+test('A correction with an over-long reason or id, or none, is dropped and logged', () => {
+  const { widgets } = fresh(); const logged = [];
+  storeTerms(widgets, REPO, [term('relay')], META, quiet);
+  const n = applyCorrections(widgets, [
+    { id: 'relay', def: 'changed', reason: 'r'.repeat(LIMITS.reason + 1) },
+    { id: 'x'.repeat(LIMITS.id + 1), def: 'changed', reason: 'ok' },
+    { id: 'relay', def: 'changed' },
+    null,
+  ], META, (s) => logged.push(s));
+  assert.equal(n, 0);
+  assert.equal(shown(widgets, 'relay').def, 'What relay is.');
+  assert.equal(logged.length, 4, 'each one is logged');
+  assert.equal(applyCorrections(widgets, [{ id: 'relay', def: 'fixed', reason: 'r'.repeat(LIMITS.reason) }], META, quiet), 1, 'a reason at the limit is fine');
+});
+
+test('Only the fields the spec names are saved: a page run cannot mark its term as selected', async () => {
+  const { widgets } = fresh();
+  storeTerms(widgets, REPO, [term('relay', { selected: true, outside: true, origin: 'other/repo:pr-1', revisedAt: 'now', extra: 'y'.repeat(5000) })], META, quiet);
+  const saved = readJson(widgets.repo).terms[0];
+  assert.deepEqual(Object.keys(saved).sort(), ['id', 'term', 'category', 'pattern', 'code', 'def', 'verified', ...Object.keys(META)].sort());
+  assert.equal(saved.origin, PAGE, 'what the host adds is the host\'s');
+  await defineWith(widgets, { repo: REPO, origin: PAGE, regenerate: true }, async () => ({ out: { terms: [] }, meta: META }));
+  assert.deepEqual(ids(widgets.repo), [], 'Regenerate of its page removes it');
+});
+
+test('A link is kept only on github.com under the owner, when a term is saved and when a glossary is read', () => {
+  const { widgets } = fresh(); const logged = [];
+  const issue = 'https://github.com/octo-org/widgets/issues/34', upper = 'https://GitHub.com/Octo-Org/gadgets/pull/2';
+  storeTerms(widgets, REPO, [
+    term('issue', { link: issue }), term('upper', { link: upper }), term('nolink'),
+    term('site', { link: 'https://docs.attacker.example/x' }),
+    term('other', { link: 'https://github.com/someone-else/notes' }),
+    term('climb', { link: 'https://github.com/octo-org/../someone-else/notes' }),
+    term('user', { link: 'https://octo-org@github.com/octo-org/x' }),
+    term('port', { link: 'https://github.com:8443/octo-org/x' }),
+    term('plain', { link: 'http://github.com/octo-org/x' }),
+    term('words', { link: 'see the wiki' }),
+  ], META, (s) => logged.push(s));
+  const links = Object.fromEntries(readJson(widgets.repo).terms.filter((t) => t.link).map((t) => [t.id, t.link]));
+  assert.deepEqual(links, { issue, upper });
+  assert.equal(ids(widgets.repo).length, 10, 'the terms themselves are kept');
+  assert.equal(logged.filter((s) => /without its link/.test(s)).length, 7);
+  // Stored before the rule: pages get the term without its link, and the file stays as it is.
+  const g = readJson(widgets.repo);
+  g.terms.push({ ...g.terms[0], id: 'rfc', pattern: '\\brfc\\b', link: 'https://www.rfc-editor.org/rfc/rfc9728' });
+  writeJson(widgets.repo, g);
+  const before = fs.readFileSync(widgets.repo, 'utf8');
+  const read = (o) => Object.fromEntries(mergedGlossary(widgets, o).map((t) => [t.id, t.link]));
+  assert.equal(read({ owner: 'octo-org' }).rfc, undefined);
+  assert.equal(read({ owner: 'Octo-Org' }).issue, issue);
+  assert.equal(read({}).issue, undefined, 'no owner given: no link');
+  assert.equal(read({ owner: 'someone-else' }).issue, undefined);
+  assert.equal(fs.readFileSync(widgets.repo, 'utf8'), before);
+});
+
+// A term saved by a run on an outside page (a fork's pull request): the host adds outside: true.
+const OUT = { ...META, origin: `${REPO}:pr-12`, outside: true };
+
+test('The outside mark is the host\'s: a run can neither set it nor clear it', () => {
+  const { widgets } = fresh();
+  storeTerms(widgets, REPO, [term('inside', { outside: true })], META, quiet);
+  storeTerms(widgets, REPO, [term('fork', { outside: false })], OUT, quiet);
+  assert.equal(shown(widgets, 'inside').outside, undefined);
+  assert.equal(shown(widgets, 'fork').outside, true);
+});
+
+test('Limit writes: a run on an outside page replaces no other page\'s term, corrects nothing and adds no owner term', async () => {
+  const { widgets } = fresh(); const logged = [];
+  storeTerms(widgets, REPO, [term('relay'), term('hub', { layer: 'org' })], META, quiet, OWNER);
+  const run = (out, o = {}) => defineWith(widgets, { repo: REPO, origin: OUT.origin, ownerAllowed: true, limited: true, log: (s) => logged.push(s), ...o }, async () => ({ out, meta: OUT }));
+  const r = await run({
+    terms: [term('relay', { def: 'theirs' }), term('hub', { def: 'theirs' }), term('shared', { layer: 'org' }), term('fresh')],
+    corrections: [{ id: 'relay', def: 'theirs', reason: 'x' }],
+  });
+  assert.deepEqual(r.ids.sort(), ['fresh', 'shared']);
+  assert.equal(r.corrected, 0);
+  assert.equal(shown(widgets, 'relay').def, 'What relay is.', 'the stored term is unchanged');
+  assert.equal(shown(widgets, 'hub').def, 'What hub is.', 'a repository term of the same id would have hidden the owner\'s');
+  assert.deepEqual(ids(widgets.org), ['hub'], 'the owner glossary gets nothing');
+  assert.equal(shown(widgets, 'shared').layer, 'repo');
+  const said = logged.join('\n');
+  assert.match(said, /dropped term relay: a run on an outside page does not replace the term from octo-org\/widgets:pr-7/);
+  assert.match(said, /dropped term hub/); assert.match(said, /saved shared in the repository glossary/); assert.match(said, /dropped 1 corrections/);
+  await run({ terms: [term('fresh', { def: 'again' })] });
+  assert.equal(shown(widgets, 'fresh').def, 'again', 'the page\'s own earlier term is replaced');
+  await run({ terms: [term('relay', { def: 'theirs' })], corrections: [{ id: 'hub', def: 'theirs', reason: 'x' }] }, { limited: false });
+  assert.equal(shown(widgets, 'relay').def, 'theirs', 'mode off: as before');
+  assert.equal(shown(widgets, 'hub').def, 'theirs');
+});
+
+test('Outside pages: a term from an outside page is given only to that page and to its runs', () => {
+  const { widgets } = fresh();
+  storeTerms(widgets, REPO, [term('relay'), term('hub', { layer: 'org' })], META, quiet, OWNER);
+  storeTerms(widgets, REPO, [term('queue'), term('hub', { def: 'theirs' })], OUT, quiet); // saved while the mode was off
+  const at = (page, mode) => Object.fromEntries(mergedGlossary(widgets, { owner: 'octo-org', page: `${REPO}:${page}`, mode }).map((t) => [t.id, t.def]));
+  assert.deepEqual(at('issue-3', 'outside-pages'), { relay: 'What relay is.', hub: 'What hub is.' }, 'another page: the owner\'s hub, not the fork\'s');
+  assert.deepEqual(at('pr-12', 'outside-pages'), { relay: 'What relay is.', hub: 'theirs', queue: 'What queue is.' }, 'its own page');
+  for (const mode of ['off', 'limit-writes']) assert.equal(at('issue-3', mode).queue, 'What queue is.', `${mode}: given to every page`);
+  const forRun = (page) => glossaryForRun(widgets, { repo: REPO, page: `${REPO}:${page}`, mode: 'outside-pages' }).map((t) => t.id).sort();
+  assert.deepEqual(forRun('issue-3'), ['hub', 'relay']);
+  assert.deepEqual(forRun('pr-12'), ['hub', 'queue', 'relay']);
 });

@@ -129,15 +129,31 @@ function patternProblem(src) {
   return null;
 }
 
+// A term's link may only point into GitHub under the repository's owner: a run can be
+// prompt-injected, and a link is the one thing it writes that a click sends somewhere else.
+// Returns the problem, or null.
+export function linkProblem(link, owner) {
+  if (!owner) return 'the owner it must be under is not known';
+  let u; try { u = new URL(link); } catch { return 'not an address'; }
+  if (u.protocol !== 'https:' || u.host !== 'github.com' || u.username || u.password) return 'not an https address on github.com';
+  return (u.pathname.split('/')[1] || '').toLowerCase() === String(owner).toLowerCase() ? null : `not under github.com/${owner}`;
+}
+
 // Owner terms and repository terms together; the repository's meaning wins. A term whose pattern
 // fails checkPattern (saved before a check was added, or edited by hand) is left out, so it never
-// reaches a page.
-export function mergedGlossary(files) {
-  const org = readJson(files.org, { terms: [] }).terms.map((t) => ({ ...t, layer: 'org' }));
-  const local = readJson(files.repo, { terms: [] }).terms.map((t) => ({ ...t, layer: 'repo' }));
+// reaches a page, and so is a link that fails linkProblem. In the outside-pages mode a term from an
+// outside page is given only to that page (page is its origin, "owner/repo:page").
+export function mergedGlossary(files, { owner = null, page = null, mode = 'off' } = {}) {
+  const here = (t) => mode !== 'outside-pages' || !t.outside || t.origin === page;
+  const org = readJson(files.org, { terms: [] }).terms.filter(here).map((t) => ({ ...t, layer: 'org' }));
+  const local = readJson(files.repo, { terms: [] }).terms.filter(here).map((t) => ({ ...t, layer: 'repo' }));
   const byId = new Map(org.map((t) => [t.id, t]));
   for (const t of local) byId.set(t.id, t);
-  return [...byId.values()].filter((t) => !checkPattern(t.pattern));
+  return [...byId.values()].filter((t) => !checkPattern(t.pattern)).map((t) => {
+    if (t.link === undefined || !linkProblem(t.link, owner)) return t;
+    const { link: _left, ...rest } = t;
+    return rest;
+  });
 }
 
 // Whether a run on repo may change an owner-layer term: one it first defined itself, or any when the
@@ -146,8 +162,11 @@ export function mergedGlossary(files) {
 const mayChangeOwnerTerm = (t, repo, ownerAllowed) => ownerAllowed || String(t?.origin || '').toLowerCase().startsWith(`${String(repo).toLowerCase()}:`);
 
 // What one run may save. A run can be prompt-injected, and its terms go to every page of the
-// repository (or the owner): the number of terms and the size of each field are capped.
-export const LIMITS = { terms: 200, id: 100, term: 200, def: 4000, where: 500, link: 500 };
+// repository (or the owner): the number of terms and the size of each field are capped, and only the
+// fields the term-definition spec names are kept (a run that returned selected: true would otherwise
+// have its term survive Regenerate).
+export const LIMITS = { terms: 200, id: 100, term: 200, def: 4000, where: 500, link: 500, reason: 300 };
+const TERM_FIELDS = ['id', 'term', 'category', 'pattern', 'code', 'def', 'verified', 'where', 'link'];
 export function termProblem(t) {
   if (!t || typeof t !== 'object') return 'not an object';
   for (const k of ['id', 'term', 'def']) if (typeof t[k] !== 'string' || !t[k]) return `${k} is missing`;
@@ -162,7 +181,10 @@ export function termProblem(t) {
 // term the run may not write is saved in this repository's glossary instead: a new one unless the
 // reader allowed the whole owner (allowing one repository must not put terms on every page of the
 // owner), and an existing one that another repository defined.
-export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false } = {}) {
+// limited: the run was on an outside page and the reader limits those. It then replaces no term
+// first defined from another page, in either layer, and writes only the repository's glossary.
+export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false, limited = false } = {}) {
+  const owner = repo.split('/')[0];
   const current = { repo: readJson(files.repo, { terms: [] }), org: readJson(files.org, { terms: [] }) };
   const maps = { repo: new Map(current.repo.terms.map((t) => [t.id, t])), org: new Map(current.org.terms.map((t) => [t.id, t])) };
   const ids = [];
@@ -171,29 +193,40 @@ export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false
     const problem = termProblem(t);
     if (problem) { log(`dropped term ${String(t?.id).slice(0, 100)}: ${problem}`); continue; }
     let layer = t.layer === 'org' ? 'org' : 'repo';
-    if (layer === 'org' && !maps.org.has(t.id) && !ownerAllowed) {
+    if (limited) {
+      const prior = maps.repo.get(t.id) ?? maps.org.get(t.id);
+      if (prior && prior.origin !== meta.origin) { log(`dropped term ${t.id}: a run on an outside page does not replace the term from ${prior.origin}`); continue; }
+      if (layer === 'org') { log(`saved ${t.id} in the repository glossary: a run on an outside page adds no owner terms`); layer = 'repo'; }
+    } else if (layer === 'org' && !maps.org.has(t.id) && !ownerAllowed) {
       log(`saved ${t.id} in the repository glossary: only allowing the whole owner adds owner terms`);
       layer = 'repo';
     } else if (layer === 'org' && maps.org.has(t.id) && !mayChangeOwnerTerm(maps.org.get(t.id), repo, ownerAllowed)) {
       log(`saved ${t.id} in the repository glossary: the owner term with that id came from ${maps.org.get(t.id).origin}`);
       layer = 'repo';
     }
-    const { layer: _drop, ...rest } = t;
-    maps[layer].set(t.id, { ...rest, ...meta });
+    const kept = Object.fromEntries(TERM_FIELDS.filter((k) => t[k] !== undefined).map((k) => [k, t[k]]));
+    const linkBad = kept.link === undefined ? null : linkProblem(kept.link, owner);
+    if (linkBad) { log(`saved ${t.id} without its link: ${linkBad}`); delete kept.link; }
+    maps[layer].set(t.id, { ...kept, ...meta });
     if (layer === 'org' && maps.repo.delete(t.id)) log(`removed the repository copy of ${t.id}: now an owner term`);
     ids.push(t.id);
   }
   const now = new Date().toISOString();
   writeJson(files.repo, { repo, updatedAt: now, terms: [...maps.repo.values()] });
-  writeJson(files.org, { org: repo.split('/')[0], updatedAt: now, terms: [...maps.org.values()] });
+  writeJson(files.org, { org: owner, updatedAt: now, terms: [...maps.org.values()] });
   return ids;
 }
 
 // Thorough's corrections: replace def/pattern of an existing term in whichever layer holds it.
-export function applyCorrections(files, corrections, meta, log, { ownerAllowed = false } = {}) {
+// A limited run (see storeTerms) corrects nothing.
+export function applyCorrections(files, corrections, meta, log, { ownerAllowed = false, limited = false } = {}) {
   const repo = String(meta.origin || '').split(':')[0];
   let applied = 0;
-  for (const c of (corrections || []).slice(0, LIMITS.terms)) {
+  const list = (Array.isArray(corrections) ? corrections : []).slice(0, LIMITS.terms);
+  if (limited) { if (list.length) log(`dropped ${list.length} corrections: a run on an outside page corrects nothing`); return 0; }
+  for (const c of list) {
+    if (!c || typeof c.id !== 'string' || c.id.length > LIMITS.id) { log(`dropped a correction: its id is missing or longer than ${LIMITS.id} characters`); continue; }
+    if (typeof c.reason !== 'string' || c.reason.length > LIMITS.reason) { log(`dropped correction ${c.id}: its reason is missing or longer than ${LIMITS.reason} characters`); continue; }
     if (c.pattern) { const problem = checkPattern(c.pattern); if (problem) { log(`dropped correction ${c.id}: ${problem}`); continue; } }
     if (c.def !== undefined && (typeof c.def !== 'string' || c.def.length > LIMITS.def)) { log(`dropped correction ${c.id}: def is longer than ${LIMITS.def} characters`); continue; }
     for (const f of [files.repo, files.org]) {
@@ -228,23 +261,26 @@ export function dropPageTerms(files, origin) {
 }
 
 // Glossary handed to a run: Quick and Select only need what exists; Thorough also checks definitions.
-// A regenerating run does not see the terms it will replace, so it defines them afresh.
-export function glossaryForRun(files, { full = false, regenerateOrigin = null } = {}) {
-  return mergedGlossary(files)
+// A regenerating run does not see the terms it will replace, so it defines them afresh. An owner term
+// another repository defined is given in full only when the run could correct it (the whole owner is
+// allowed): its definition is text from that other repository's pages.
+export function glossaryForRun(files, { full = false, regenerateOrigin = null, repo = null, ownerAllowed = false, page = null, mode = 'off' } = {}) {
+  return mergedGlossary(files, { owner: repo ? repo.split('/')[0] : null, page, mode })
     .filter((t) => !regenerateOrigin || !replacedByRegenerate(t, regenerateOrigin))
-    .map((t) => full
+    .map((t) => full && (t.layer !== 'org' || mayChangeOwnerTerm(t, repo, ownerAllowed))
       ? { id: t.id, term: t.term, layer: t.layer, category: t.category, pattern: t.pattern, code: t.code, def: t.def, where: t.where }
       : { id: t.id, term: t.term, layer: t.layer, pattern: t.pattern });
 }
 
 // One page run against the store. run(glossary) does the work and resolves to { out, meta }.
 // Nothing on disk changes until it resolves: if it rejects, the stored terms are as they were.
-export async function defineWith(files, { repo, origin, full = false, regenerate = false, ownerAllowed = false, log = () => {} }, run) {
-  const glossary = glossaryForRun(files, { full, regenerateOrigin: regenerate ? origin : null });
+// mode is the reader's outside mode, and limited whether this run is held to "limit writes".
+export async function defineWith(files, { repo, origin, full = false, regenerate = false, ownerAllowed = false, limited = false, mode = 'off', log = () => {} }, run) {
+  const glossary = glossaryForRun(files, { full, regenerateOrigin: regenerate ? origin : null, repo, ownerAllowed, page: origin, mode });
   const { out, meta } = await run(glossary);
   const removed = regenerate ? dropPageTerms(files, origin) : 0;
   if (regenerate) log(`regenerate: replaced ${removed} terms from ${origin}`);
-  const ids = storeTerms(files, repo, out.terms || [], meta, log, { ownerAllowed });
-  const corrected = applyCorrections(files, out.corrections, meta, log, { ownerAllowed });
+  const ids = storeTerms(files, repo, out.terms || [], meta, log, { ownerAllowed, limited });
+  const corrected = applyCorrections(files, out.corrections, meta, log, { ownerAllowed, limited });
   return { ids, corrected, removed, meta };
 }

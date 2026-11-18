@@ -5,6 +5,9 @@
     "term"
   ],
   "properties": {
+    "notes": {
+      "type": "string"
+    },
     "term": {
       "type": "object",
       "additionalProperties": false,
