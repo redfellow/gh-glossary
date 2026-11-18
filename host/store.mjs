@@ -4,6 +4,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 
 // A missing file reads as d. A file that is there but cannot be read or parsed is an error, never d:
 // the glossaries may be edited by hand, and treating a typo as an empty glossary would let the next
@@ -21,11 +22,14 @@ export function writeJson(p, v) {
   catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
 }
 
-// What a pattern repeats: { groupRepeated, repeats, separated }. A repeat is *, + or {n,m} other than
-// an exact {n}; ? is not one. Two repeats are separated when both are outside groups and a plain,
-// unrepeated character lies between them (red\s*→\s*green), so their runs cannot overlap.
+// What a pattern repeats: { groupRepeated, repeats, separated, choices }. A repeat is *, + or {n,m}
+// other than an exact {n}; ? is not one. Two repeats are separated when both are outside groups and a
+// plain, unrepeated character lies between them (red\s*→\s*green), so their runs cannot overlap.
+// choices is the most choice points in one top-level alternative: each ? and each group with | in it.
+// A failing match can try every combination of them, so twenty .? in a row take seconds.
 function repeatShape(src) {
   const top = []; let depth = 0, groupRepeated = false, repeats = 0, inner = false;
+  let choices = 0, maxChoices = 0; const alts = [];
   const lastAt = [null]; // the last atom at each depth
   const atom = (a) => { lastAt[depth] = a; if (depth === 0) top.push(a); };
   for (let i = 0; i < src.length; i++) {
@@ -42,15 +46,21 @@ function repeatShape(src) {
       while (j < src.length && src[j] !== ']') j += src[j] === '\\' ? 2 : 1;
       atom({ kind: 'class', q: null }); i = j; continue;
     }
-    if (c === '(') { depth++; lastAt[depth] = null; if (src[i + 1] === '?') i += src[i + 2] === '<' ? 3 : 2; continue; }
-    if (c === ')') { depth--; atom({ kind: 'group', q: null }); continue; }
-    if (c === '|') { lastAt[depth] = null; if (depth === 0) top.push({ kind: 'alt', q: null }); continue; }
+    if (c === '(') { depth++; lastAt[depth] = null; alts.push(false); if (src[i + 1] === '?') i += src[i + 2] === '<' ? 3 : 2; continue; }
+    if (c === ')') { depth--; if (alts.pop()) choices++; atom({ kind: 'group', q: null }); continue; }
+    if (c === '|') {
+      lastAt[depth] = null;
+      if (depth === 0) { top.push({ kind: 'alt', q: null }); maxChoices = Math.max(maxChoices, choices); choices = 0; }
+      else alts[alts.length - 1] = true;
+      continue;
+    }
     if (c === '^' || c === '$') { atom({ kind: 'assert', q: null }); continue; }
     const quant = c === '*' || c === '+' ? c : c === '?' ? '?' : c === '{' && /^\{\d+(,\d*)?\}/.test(src.slice(i)) ? src.slice(i, src.indexOf('}', i) + 1) : null;
     if (quant) {
       const a = lastAt[depth];
       if (quant.startsWith('{')) i = src.indexOf('}', i);
       if (src[i + 1] === '?') i++; // lazy
+      if (a && (quant === '?' || /^\{0,1\}$/.test(quant))) choices++;
       if (!a || quant === '?') continue;
       const range = /^\{(\d+),(\d+)\}$/.exec(quant);
       const exact = /^\{\d+\}$/.test(quant) || (range && range[1] === range[2]);
@@ -66,7 +76,19 @@ function repeatShape(src) {
     const idx = top.map((a, k) => (a.q ? k : -1)).filter((k) => k >= 0);
     separated = top.slice(idx[0] + 1, idx[1]).some((a) => a.kind === 'lit' && !a.q);
   }
-  return { groupRepeated, repeats, separated };
+  return { groupRepeated, repeats, separated, choices: Math.max(maxChoices, choices) };
+}
+
+// Runs the pattern on text made of its own characters, which is where a slow pattern is slowest,
+// with a time limit. A pattern that passes the shape rules but still takes long is refused.
+const PROBE_MS = 50;
+function slowOnProbes(src) {
+  const chars = [...new Set(src.replace(/\\[pPu]\{[^}]*\}|\\./g, ' ').replace(/[()[\]{}|*+?^$\\]/g, ''))].join('') || 'a';
+  const probes = [chars.repeat(Math.ceil(90 / chars.length)).slice(0, 90), 'a'.repeat(90), `${'a '.repeat(45)}`, `${chars.repeat(40).slice(0, 89)}\u00a7`];
+  try {
+    vm.runInNewContext('for (const p of probes) new RegExp(src).exec(p)', { probes, src }, { timeout: PROBE_MS });
+    return false;
+  } catch { return true; }
 }
 
 // Strings a term pattern should never match empty in: a pattern that can (\b, (?=\w)) matches
@@ -77,8 +99,17 @@ const EMPTY_PROBES = [' ', 'a', 'a b', 'Ab-c_d.e', '0 1', 'foo bar baz', 'x.y/z'
 // Patterns run on every page of the repository (an owner term on every page of the owner), and a
 // regex cannot be stopped once it runs, so the forms that can take very long are refused: a
 // repeated group such as (a+)+ or (?:a|ab)*, backreferences, more than two repeats (*, +, {n,m}),
-// and two repeats whose runs can meet (\w*\w*). Term patterns never need them.
+// two repeats whose runs can meet (\w*\w*), more than six ? or alternative groups in one alternative
+// (four next to a repeat), and anything that still takes over 50 ms on a short text made of its own
+// characters. Term patterns never need them.
+const checked = new Map(); // pattern -> problem, since every page read checks every stored pattern
 export function checkPattern(src) {
+  if (typeof src === 'string' && checked.has(src)) return checked.get(src);
+  const problem = patternProblem(src);
+  if (typeof src === 'string') { if (checked.size > 20000) checked.clear(); checked.set(src, problem); }
+  return problem;
+}
+function patternProblem(src) {
   let re;
   if (typeof src !== 'string' || src.length > 500) return 'not a string of at most 500 characters';
   try { re = new RegExp(src); } catch (e) { return `invalid regex: ${e.message}`; }
@@ -87,12 +118,14 @@ export function checkPattern(src) {
   if (shape.groupRepeated) return 'repeats a group with *, + or {}';
   if (shape.repeats > 2) return 'has more than two *, + or {} repeats';
   if (shape.repeats === 2 && !shape.separated) return 'has two repeats that are not separated by a plain character outside any group';
+  if (shape.choices > (shape.repeats ? 4 : 6)) return `has ${shape.choices} optional parts or alternative groups in one alternative (at most ${shape.repeats ? 4 : 6}${shape.repeats ? ' with a *, + or {} repeat' : ''})`;
   if (new RegExp(`|${src}`).exec('').length > 1) return 'has a capturing group';
   if (re.test('')) return 'matches the empty string';
   for (const probe of EMPTY_PROBES) {
     const g = new RegExp(src, 'g'); let m;
     while ((m = g.exec(probe))) { if (!m[0]) return 'can match an empty string within text'; }
   }
+  if (slowOnProbes(src)) return `takes over ${PROBE_MS} ms on a short text`;
   return null;
 }
 
@@ -112,6 +145,18 @@ export function mergedGlossary(files) {
 // owner's other repositories show.
 const mayChangeOwnerTerm = (t, repo, ownerAllowed) => ownerAllowed || String(t?.origin || '').toLowerCase().startsWith(`${String(repo).toLowerCase()}:`);
 
+// What one run may save. A run can be prompt-injected, and its terms go to every page of the
+// repository (or the owner): the number of terms and the size of each field are capped.
+export const LIMITS = { terms: 200, id: 100, term: 200, def: 4000, where: 500, link: 500 };
+export function termProblem(t) {
+  if (!t || typeof t !== 'object') return 'not an object';
+  for (const k of ['id', 'term', 'def']) if (typeof t[k] !== 'string' || !t[k]) return `${k} is missing`;
+  for (const k of ['id', 'term', 'def', 'where', 'link']) {
+    if (t[k] !== undefined && (typeof t[k] !== 'string' || t[k].length > LIMITS[k])) return `${k} is longer than ${LIMITS[k]} characters`;
+  }
+  return checkPattern(t.pattern);
+}
+
 // Saves a run's terms. An id replaces the term in its own layer; an owner-layer term also removes
 // that id from this repository's glossary, so the new definition is the one shown. An owner-layer
 // term the run may not write is saved in this repository's glossary instead: a new one unless the
@@ -121,9 +166,10 @@ export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false
   const current = { repo: readJson(files.repo, { terms: [] }), org: readJson(files.org, { terms: [] }) };
   const maps = { repo: new Map(current.repo.terms.map((t) => [t.id, t])), org: new Map(current.org.terms.map((t) => [t.id, t])) };
   const ids = [];
+  if (terms.length > LIMITS.terms) { log(`dropped ${terms.length - LIMITS.terms} terms: a run saves at most ${LIMITS.terms}`); terms = terms.slice(0, LIMITS.terms); }
   for (const t of terms) {
-    const problem = checkPattern(t.pattern);
-    if (problem) { log(`dropped term ${t.id}: ${problem}`); continue; }
+    const problem = termProblem(t);
+    if (problem) { log(`dropped term ${String(t?.id).slice(0, 100)}: ${problem}`); continue; }
     let layer = t.layer === 'org' ? 'org' : 'repo';
     if (layer === 'org' && !maps.org.has(t.id) && !ownerAllowed) {
       log(`saved ${t.id} in the repository glossary: only allowing the whole owner adds owner terms`);
@@ -147,8 +193,9 @@ export function storeTerms(files, repo, terms, meta, log, { ownerAllowed = false
 export function applyCorrections(files, corrections, meta, log, { ownerAllowed = false } = {}) {
   const repo = String(meta.origin || '').split(':')[0];
   let applied = 0;
-  for (const c of corrections || []) {
+  for (const c of (corrections || []).slice(0, LIMITS.terms)) {
     if (c.pattern) { const problem = checkPattern(c.pattern); if (problem) { log(`dropped correction ${c.id}: ${problem}`); continue; } }
+    if (c.def !== undefined && (typeof c.def !== 'string' || c.def.length > LIMITS.def)) { log(`dropped correction ${c.id}: def is longer than ${LIMITS.def} characters`); continue; }
     for (const f of [files.repo, files.org]) {
       const g = readJson(f, null); const t = g?.terms.find((x) => x.id === c.id);
       if (!t) continue;
