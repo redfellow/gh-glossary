@@ -81,14 +81,20 @@ function repeatShape(src) {
 
 // Runs the pattern on text made of its own characters, which is where a slow pattern is slowest,
 // with a time limit. A pattern that passes the shape rules but still takes long is refused.
+// The limit is wall-clock time, so a busy machine can stall one probe of a pattern that is fast
+// (\brelay\b was refused that way); the verdict is kept for the life of the host, so a pattern is
+// refused only when it is over the limit twice in a row.
 const PROBE_MS = 50;
-function slowOnProbes(src) {
-  const chars = [...new Set(src.replace(/\\[pPu]\{[^}]*\}|\\./g, ' ').replace(/[()[\]{}|*+?^$\\]/g, ''))].join('') || 'a';
-  const probes = [chars.repeat(Math.ceil(90 / chars.length)).slice(0, 90), 'a'.repeat(90), `${'a '.repeat(45)}`, `${chars.repeat(40).slice(0, 89)}\u00a7`];
+function probeOnce(src, probes) {
   try {
     vm.runInNewContext('for (const p of probes) new RegExp(src).exec(p)', { probes, src }, { timeout: PROBE_MS });
     return false;
   } catch { return true; }
+}
+export function slowOnProbes(src, probe = probeOnce) {
+  const chars = [...new Set(src.replace(/\\[pPu]\{[^}]*\}|\\./g, ' ').replace(/[()[\]{}|*+?^$\\]/g, ''))].join('') || 'a';
+  const probes = [chars.repeat(Math.ceil(90 / chars.length)).slice(0, 90), 'a'.repeat(90), `${'a '.repeat(45)}`, `${chars.repeat(40).slice(0, 89)}\u00a7`];
+  return probe(src, probes) && probe(src, probes);
 }
 
 // Strings a term pattern should never match empty in: a pattern that can (\b, (?=\w)) matches
