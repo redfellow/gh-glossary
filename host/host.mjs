@@ -46,6 +46,19 @@ const HOST_LOG = path.join(CACHE, 'logs', 'host.log');
 const hostLog = (...a) => { try { fs.appendFileSync(HOST_LOG, `[${new Date().toISOString()}] ${a.join(' ')}\n`); } catch {} };
 console.log = console.info = console.warn = console.error = hostLog;
 
+// git in a run reads no configuration but the checkout's own (.git/config, written by the host): the
+// reader's global and system config can name diff drivers, text converters, pagers and aliases that a
+// repository's .gitattributes could then point at its own files. git variables that run programs or
+// change what git reads are removed too.
+const EMPTY_GITCONFIG = path.join(CACHE, 'empty.gitconfig');
+fs.writeFileSync(EMPTY_GITCONFIG, '');
+const RUN_GIT_ENV = {
+  GIT_CONFIG_GLOBAL: EMPTY_GITCONFIG, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_COUNT: '0',
+  GIT_EXTERNAL_DIFF: null, GIT_PAGER: null, PAGER: null, GIT_DIR: null, GIT_WORK_TREE: null, GIT_INDEX_FILE: null,
+  GIT_OBJECT_DIRECTORY: null, GIT_ALTERNATE_OBJECT_DIRECTORIES: null, GIT_CONFIG: null, GIT_CONFIG_PARAMETERS: null,
+  GIT_EXEC_PATH: null, GIT_SSH: null, GIT_SSH_COMMAND: null, GIT_ASKPASS: null, GIT_EDITOR: null,
+};
+
 const DEFAULTS = {
   maxMinutes: 30,
   allow: { owners: [], repos: [] },
@@ -74,13 +87,9 @@ function saveAllow() {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
 }
 
-// File reading is allowed only under the run's roots (readRule, which also covers Grep and Glob), so a
-// run that somehow lost its guard still cannot read elsewhere. The commands are checked by the guard.
-const READ_ONLY_COMMANDS = [
-  'Bash(gh pr view:*)', 'Bash(gh pr diff:*)', 'Bash(gh pr checks:*)', 'Bash(gh issue view:*)',
-  'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)', 'Bash(git grep:*)', 'Bash(git blame:*)',
-  'Bash(git status:*)', 'Bash(git ls-files:*)',
-];
+// The run's tool rules are only Read(//root/**) for its two folders (which also cover Grep and Glob).
+// There are no Bash rules: the guard approves each command it has checked, so a run that somehow lost
+// its guard can read only inside its folders and run only what Claude Code itself counts as read-only.
 
 // ---------- storage (the rules are in host/store.mjs) ----------
 const repoPath = (repo) => repo.split('/').map((s) => folderName(s));
@@ -105,7 +114,8 @@ function run(cmd, args, { cwd, input, env, timeoutMs = 5 * 60_000 } = {}) {
   return new Promise((resolve, reject) => {
     let p;
     try {
-      const fullEnv = env ? { ...process.env, ...env } : process.env;
+      // A null value removes that variable from the child's environment.
+      const fullEnv = env ? Object.fromEntries(Object.entries({ ...process.env, ...env }).filter(([, v]) => v !== null && v !== undefined)) : process.env;
       const c = resolveCommand(cmd, args, { env: fullEnv });
       p = spawn(c.file, c.args, { cwd, env: fullEnv, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     } catch (e) { reject(e); return; }
@@ -246,7 +256,7 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
     '--strict-mcp-config', '--no-chrome', '--no-session-persistence',
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
     '--add-dir', addDir,
-    '--allowedTools', [...roots.map((d) => readRule(d)), ...READ_ONLY_COMMANDS].join(','),
+    '--allowedTools', roots.map((d) => readRule(d)).join(','),
     '--disallowedTools', 'WebFetch,WebSearch,Write,Edit,NotebookEdit',
   ];
   if (config.maxBudgetUsd) args.push('--max-budget-usd', String(config.maxBudgetUsd));
@@ -257,7 +267,7 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   const marks = path.join(CACHE, 'guard-marks');
   fs.mkdirSync(marks, { recursive: true, mode: 0o700 });
   const mark = path.join(marks, `${crypto.randomBytes(16).toString('hex')}.log`);
-  const env = { GHG_ROOTS: JSON.stringify([cwd, addDir]), GHG_REPO: repo, GHG_MARK: mark };
+  const env = { GHG_ROOTS: JSON.stringify([cwd, addDir]), GHG_REPO: repo, GHG_MARK: mark, ...RUN_GIT_ENV };
   let raw, guarded = false;
   try {
     raw = await run('claude', args, { cwd, input: prompt, env, timeoutMs: config.maxMinutes * 60_000 });
