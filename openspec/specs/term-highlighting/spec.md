@@ -66,15 +66,24 @@ form, and the extension's own panel and boxes SHALL NOT be underlined.
 - **THEN** it is underlined
 
 ### Requirement: The page's content is not rewritten
-Underlines SHALL be drawn without adding, removing or wrapping elements in GitHub's page content.
+Underlines SHALL be drawn with the CSS Custom Highlight API and a style sheet built by the extension,
+without adding, removing or wrapping elements in GitHub's page content. Which term an underline
+belongs to is kept by the extension only: a page script can see which words are underlined, but not
+their definitions, and underlines it adds or removes do not change what the extension opens.
 
 #### Scenario: Underlining a paragraph
 - **WHEN** terms in a paragraph are underlined
 - **THEN** the paragraph's elements and text are the same as before
 
+#### Scenario: Highlight added by the page
+- **WHEN** a page script registers a highlight over a word that is not a term
+- **THEN** pointing at or clicking that word opens nothing
+
 ### Requirement: Underlines follow the page
 When GitHub adds or changes content after the page has loaded, the extension SHALL underline terms
-in the new content shortly afterwards. When the glossary changes, underlines are redrawn.
+in the new content shortly afterwards. When any stored term changes, underlines and definitions are
+redrawn. A term whose pattern matches an empty string on the page is left out, so it cannot hide
+other terms.
 
 #### Scenario: Lazily loaded diff
 - **WHEN** GitHub loads another file's diff as the reader scrolls
@@ -84,6 +93,14 @@ in the new content shortly afterwards. When the glossary changes, underlines are
 - **WHEN** a run adds a term that appears on the page
 - **THEN** it becomes underlined without a reload
 
+#### Scenario: Correction only
+- **WHEN** a Thorough run corrects definitions and adds no term
+- **THEN** the corrected definitions are shown without a reload
+
+#### Scenario: Term that matches nothing visible
+- **WHEN** a stored term's pattern matches an empty string in the page's text
+- **THEN** that term is not underlined and every other term still is
+
 ### Requirement: Definitions switch
 The reader SHALL be able to turn underlines off and on with the panel's Definitions switch, and the
 choice is remembered across pages and browser restarts.
@@ -91,3 +108,11 @@ choice is remembered across pages and browser restarts.
 #### Scenario: Switching off
 - **WHEN** the reader turns Definitions off
 - **THEN** all underlines disappear, any open definition closes, and hovering a term shows nothing
+
+### Requirement: Nothing in the page starts a run
+The extension SHALL add to GitHub's page only the underlines, the tab and the definition frame. None
+of them starts a run, allows a repository or opens Claude; the tab only opens the toolbar popup.
+
+#### Scenario: Page script looks for controls
+- **WHEN** a page script searches the document for Quick, Thorough, Regenerate or Define buttons
+- **THEN** there are none
