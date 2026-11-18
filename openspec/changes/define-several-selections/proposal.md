@@ -12,6 +12,8 @@ already matched opened the first term's definition, which looked like the wrong 
 - Words waiting for or being defined are marked with a steady highlight until their run ends.
 - When runs finish, only the Define asked for last opens pinned; the others are underlined.
 - The tab's tooltip and the popup list every Define in progress.
+- A Define that starts nothing (repository not allowed, bad selection) says why in a message beside
+  the tab, not only in its tooltip.
 
 ### Modified Capabilities
 

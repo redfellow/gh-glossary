@@ -85,8 +85,14 @@
     #pop { position: fixed; z-index: 3; width: min(420px, calc(100vw - 24px)); height: 120px; border: 0; border-radius: 10px;
       box-shadow: 0 8px 28px rgba(0,0,0,.2); background: transparent; color-scheme: normal; }
     #pop[hidden] { display: none; }
-  </style><div id="tab" hidden></div><iframe id="pop" hidden title="gh-glossary definition"></iframe>`;
+    #toast { position: fixed; z-index: 2; max-width: min(300px, calc(100vw - 80px)); padding: 8px 10px; border-radius: 8px;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--fgColor-default, #1f2328);
+      background: var(--bgColor-default, #fff); border: 1px solid var(--borderColor-default, #d1d9e0); box-shadow: 0 6px 20px rgba(0,0,0,.18); cursor: default; }
+    #toast.bad { border-color: var(--borderColor-danger-emphasis, #cf222e); }
+    #toast[hidden] { display: none; }
+  </style><div id="tab" hidden></div><div id="toast" role="status" hidden></div><iframe id="pop" hidden title="gh-glossary definition"></iframe>`;
   const tab = root.getElementById('tab');
+  const toast = root.getElementById('toast');
   const frame = root.getElementById('pop');
   // The frame only accepts messages carrying this nonce, which no page script can see.
   const nonce = crypto.randomUUID();
@@ -328,6 +334,20 @@
   }
   addEventListener('resize', renderTab);
 
+  // A short message beside the tab, for what the context menu's Define could not do: the tab's
+  // tooltip alone is only seen on hover. It goes away after a few seconds or on a click.
+  let toastT = 0;
+  function showToast(text, tone) {
+    if (!R) return;
+    toast.textContent = text; toast.className = tone === 'bad' ? 'bad' : ''; toast.hidden = false;
+    const t = tab.getBoundingClientRect();
+    toast.style.top = Math.max(8, Math.min(t.top, innerHeight - toast.offsetHeight - 8)) + 'px';
+    toast.style.left = dock.side === 'left' ? `${t.right + 8}px` : '';
+    toast.style.right = dock.side === 'left' ? '' : `${innerWidth - t.left + 8}px`;
+    clearTimeout(toastT); toastT = setTimeout(() => { toast.hidden = true; }, 8000);
+  }
+  toast.addEventListener('click', () => { clearTimeout(toastT); toast.hidden = true; });
+
   // Drag the tab along the edge (across the middle switches sides). A real click without a drag opens
   // the toolbar popup; a click a page script makes opens nothing.
   tab.addEventListener('mousedown', (e) => {
@@ -465,7 +485,11 @@
       if (p.range && window.getSelection()?.toString().trim() === p.text) window.getSelection().removeAllRanges();
       note = null; renderPending(); renderTab(); trackSelect(); return false;
     }
-    if (m?.type === 'note') { note = { text: String(m.text || ''), tone: m.tone === 'bad' ? 'bad' : '' }; renderTab(); return false; }
+    if (m?.type === 'note') {
+      note = { text: String(m.text || ''), tone: m.tone === 'bad' ? 'bad' : '' }; renderTab();
+      if (m.toast) showToast(note.text, note.tone);
+      return false;
+    }
     if (m?.type === 'reload') { note = null; load(); return false; }
     return false;
   });

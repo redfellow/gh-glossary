@@ -118,3 +118,11 @@ test('Several Defines may run; pending words are marked; only the last one asked
   assert.match(content, /::highlight\(ghl-pending\)/);
   assert.match(popup, /for \(const j of status\?\.selJobs \|\| \[\]\)/);
 });
+
+test('A context-menu Define that starts nothing says why beside the tab', () => {
+  assert.match(bg, /type: 'note', text, tone, toast: true/);
+  assert.match(bg, /is not allowed yet: answer in the gh-glossary popup/);
+  assert.match(bg, /is not allowed yet: click the gh-glossary tab to allow it/);
+  assert.match(content, /if \(m\.toast\) showToast\(note\.text, note\.tone\);/);
+  assert.match(from(content, 'function showToast(', 200), /toast\.textContent = text/, 'the message is text, not HTML');
+});

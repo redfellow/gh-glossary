@@ -16,11 +16,15 @@ time, and a selection whose run has not ended is refused again with "Already def
 
 #### Scenario: Selection too long or multi-line
 - **WHEN** the selection is over 120 characters or spans lines and the reader chooses the item
-- **THEN** no run starts and the tab's tooltip says why
+- **THEN** no run starts and a message beside the tab says why
 
 #### Scenario: Selection in a text field
 - **WHEN** the selection is inside a comment box and the reader chooses the item
 - **THEN** no run starts
+
+#### Scenario: Repository not allowed
+- **WHEN** the reader chooses Define on a repository that is not allowed yet
+- **THEN** the popup asks, and a message beside the tab says the repository is not allowed and where to answer
 
 #### Scenario: Several selections
 - **WHEN** the reader defines "control plane" and, before it is done, "data plane"

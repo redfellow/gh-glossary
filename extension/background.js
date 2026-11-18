@@ -183,7 +183,8 @@ function setupMenu() {
 }
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== 'ghl-define' || !tab?.id || info.frameId) return;
-  const note = (text, tone) => chrome.tabs.sendMessage(tab.id, { type: 'note', text, tone }).catch(() => {});
+  // Shown beside the tab as well as in its tooltip: a Define that starts nothing must say why.
+  const note = (text, tone) => chrome.tabs.sendMessage(tab.id, { type: 'note', text, tone, toast: true }).catch(() => {});
   let s;
   try { s = await chrome.tabs.sendMessage(tab.id, { type: 'selection' }, { frameId: 0 }); } catch { return; }
   if (!s || s.known) return;
@@ -196,8 +197,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   });
   if (r.body?.ask) {
     // Not allowed yet: the popup asks. If Chrome cannot open it now, the tab says where to answer.
-    try { await chrome.action.openPopup({ windowId: tab.windowId }); }
-    catch { note(`Click the gh-glossary tab to allow ${R.repo} and define “${shorten(s.text)}”.`); }
+    let opened = true;
+    try { await chrome.action.openPopup({ windowId: tab.windowId }); } catch { opened = false; }
+    note(opened ? `${R.repo} is not allowed yet: answer in the gh-glossary popup to define “${shorten(s.text)}”.`
+      : `${R.repo} is not allowed yet: click the gh-glossary tab to allow it and define “${shorten(s.text)}”.`, 'bad');
   } else if (r.code !== 202) note(`Could not define “${shorten(s.text)}”: ${r.body?.error || `error ${r.code}`}`, 'bad');
 });
 
