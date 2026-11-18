@@ -21,4 +21,4 @@ already matched opened the first term's definition, which looked like the wrong 
 
 ## Impact
 
-- `extension/content.js`, `extension/popup.js` and their tests.
+- `extension/content.js`, `extension/popup.js`, `extension/background.js`, `README.md` and their tests.
