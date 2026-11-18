@@ -319,15 +319,23 @@ A GitHub page is text from the internet, so every run is treated as possibly pro
   that writes files, reads files it names or starts a program, such as `--output` or `git grep -O`),
   no absolute paths or `..` in git arguments, and `gh` only on the page's own repository, never
   `--web` or `--jq`. Any other tool is refused, even if your own settings allow it, and an error in
-  the check is a refusal too. File reading is also limited to the run's two folders by the run's own
-  tool permissions, so it stays there even without the guard.
+  the check is a refusal too. Network paths (`\\host\share`) are refused before anything touches
+  them. File reading is also limited to the run's two folders by the run's own tool permissions, and
+  the run has no rule that allows a command: the guard approves each one it checked. So without the
+  guard a run still reads only inside its folders and runs only what Claude Code itself counts as
+  read-only.
+- git in a run ignores your global and system git config, so a repo's `.gitattributes` cannot start a
+  diff driver or text converter you configured.
 - The run turns hooks on over your own `disableAllHooks`. If managed settings turn hooks off or allow
   only managed hooks, no run starts and the page says why. The guard also marks every call it checks,
   and a run that ends without a mark (its hooks were off some other way) is discarded.
 - Only your user settings are loaded, so hooks or settings committed in the repo do not run. MCP
   servers and Chrome are off for the run. Web tools, Write and Edit are off.
 - The extension escapes everything Claude wrote before showing it. A definition's link must be
-  `https`, is labelled with its host, and is opened without its query or fragment. Send to Claude
+  `https`, shows the whole address it opens, loses its query and fragment, and opens the site's front
+  page if its path is over 120 characters. Term patterns that could take long to match are refused,
+  and one run saves at most 200 terms. The page's script reads glossaries only for the repo its tab
+  shows. Send to Claude
   percent-encodes the file path and branch it puts in the prompt.
 - One Claude run at a time; others queue.
 
