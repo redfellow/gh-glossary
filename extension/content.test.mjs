@@ -105,7 +105,7 @@ test('A content script reads only for the repository its tab shows', () => {
   assert.equal(ok(tab('https://github.com/settings'), '/api/page', { repo: 'settings/x' }), false);
 });
 
-test('Several Defines may run; pending words pulse; only the last one asked for opens', () => {
+test('Several Defines may run; pending words are marked; only the last one asked for opens', () => {
   const sel = from(content, 'function selectionRequest()', 900);
   assert.ok(!sel.includes('Still defining'), 'a running Define does not block another');
   assert.match(sel, /selJobs\.some\(\(j\) => j\.text === s\.text\)\) return \{ problem: `Already defining/);
@@ -113,8 +113,8 @@ test('Several Defines may run; pending words pulse; only the last one asked for 
   const track = from(content, 'async function trackSelect()', 2600);
   assert.match(track, /const last = done\.find\(\(\{ j \}\) => j\.n === selAsked\);/);
   assert.equal((track.match(/openPop\(/g) || []).length, 1, 'one place opens a box, for the last Define only');
-  const pend = from(content, 'function renderPending()', 700);
-  assert.match(pend, /'ghl-pending'/); assert.match(pend, /if \(!calm\.matches\) pulseT = setInterval\(show, 700\)/);
-  assert.match(content, /::highlight\(ghl-pending\)/); assert.match(content, /::highlight\(ghl-pending-dim\)/);
+  const pend = from(content, 'function renderPending()', 400);
+  assert.match(pend, /CSS\.highlights\.set\('ghl-pending'/); assert.ok(!/setInterval/.test(pend), 'the pending highlight is steady');
+  assert.match(content, /::highlight\(ghl-pending\)/);
   assert.match(popup, /for \(const j of status\?\.selJobs \|\| \[\]\)/);
 });

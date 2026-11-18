@@ -28,8 +28,7 @@ time, and a selection whose run has not ended is refused again with "Already def
 
 ### Requirement: Select result
 A Select run SHALL store one term marked as asked for by the reader. While it runs the tab's dot
-pulses, the selected words pulse between two highlights (steady when the reader prefers reduced
-motion), and the popup shows each selection and the seconds elapsed. When it finishes the new
+pulses, the selected words are marked with a steady highlight, and the popup shows each selection and the seconds elapsed. When it finishes the new
 definition opens pinned at the term only if it is the Define the reader asked for last; the others
 are just underlined. A result whose pattern cannot be used fails with a message to select a
 slightly different span. When the run's state can no longer be read, the popup says so and whether
