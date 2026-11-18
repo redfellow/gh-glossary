@@ -55,7 +55,9 @@
   sheet.replaceSync(`
     html.ghl-hover-term, html.ghl-hover-term * { cursor: help !important; }
     ::highlight(ghl-term) { text-decoration: underline dotted var(--fgColor-accent, #0969da); text-decoration-thickness: 1.5px; }
-    ::highlight(ghl-active) { background-color: var(--bgColor-accent-muted, rgba(84,174,255,.2)); }`);
+    ::highlight(ghl-active) { background-color: var(--bgColor-accent-muted, rgba(84,174,255,.2)); }
+    ::highlight(ghl-pending) { background-color: var(--bgColor-attention-muted, rgba(212,167,44,.4)); }
+    ::highlight(ghl-pending-dim) { background-color: color-mix(in srgb, var(--bgColor-attention-muted, rgba(212,167,44,.4)) 35%, transparent); }`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 
   // ---------- the tab and the definition frame, in a closed shadow root ----------
@@ -299,12 +301,15 @@
   // @ghl-test end dock
   let dock = startDock(getVal, setVal); // { side: 'left' | 'right', top }
   const busy = (j) => j && (j.state === 'queued' || j.state === 'running');
-  let selJob = null; // { key, text, startedAt, rect } while a Select run started from the context menu is going
+  // Select runs started from the context menu that have not ended, in the order they were asked for:
+  // { key, text, startedAt, rect, range, n, state }. The host runs them one at a time. selAsked is the
+  // number of the Define asked for last: only its definition opens by itself when it is done.
+  let selJobs = [], selAsked = 0;
 
   function statusText() {
     const lines = [];
     if (note) lines.push(note.text);
-    if (selJob) lines.push(`Defining “${selJob.text}” (${Math.round((Date.now() - selJob.startedAt) / 1000)} s)…`);
+    for (const j of selJobs) lines.push(j.state === 'queued' ? `Defining “${j.text}”: queued` : `Defining “${j.text}” (${Math.round((Date.now() - j.startedAt) / 1000)} s)…`);
     const dj = data?.defineJob;
     if (busy(dj)) lines.push(dj.state === 'queued' ? 'Defining this page: queued' : 'Defining this page…');
     else if (dj?.state === 'error') lines.push(`Defining failed: ${dj.error}`);
@@ -317,7 +322,7 @@
     tab.className = dock.side;
     tab.style.top = Math.min(Math.max(0, dock.top), innerHeight - 90) + 'px';
     const dj = data?.defineJob;
-    const dot = busy(dj) || selJob ? 'busy' : note?.tone === 'bad' || dj?.state === 'error' ? 'bad' : '';
+    const dot = busy(dj) || selJobs.length ? 'busy' : note?.tone === 'bad' || dj?.state === 'error' ? 'bad' : '';
     const n = M.count;
     tab.title = statusText();
     tab.innerHTML = `<div class="badge">${dot ? `<span class="dot ${dot}"></span>` : ''}<span>gh-glossary</span>${n ? `<span class="n ${defsOn ? '' : 'off'}">${n}</span>` : ''}</div>`;
@@ -371,9 +376,9 @@
     const anc = c.nodeType === 1 ? c : c.parentElement;
     if (!anc || anc.closest('input, textarea, [contenteditable="true"]')) return { field: true };
     const block = anc.closest(`${BLOCK_SEL}, td.diff-text-cell, .react-file-line`) || anc;
-    return { text, context: block.textContent.trim().slice(0, 600), rect: r.getBoundingClientRect() };
+    return { text, context: block.textContent.trim().slice(0, 600), rect: r.getBoundingClientRect(), range: r.cloneRange() };
   }
-  let pendingSel = null;
+  const pendingSels = new Map(); // text -> the selection, until the service worker says its run started
   // What the context menu's Define should do with the current selection.
   function selectionRequest() {
     if (!R) return { problem: 'This page is not one gh-glossary handles.' };
@@ -381,42 +386,67 @@
     if (!s) return { problem: 'Nothing is selected.' };
     if (s.field) return { problem: 'Text in a comment box or other field is not defined.' };
     if (s.text.length > 120 || s.text.includes('\n')) return { problem: 'Select at most 120 characters on one line.' };
-    if (selJob) return { problem: `Still defining “${shorten(selJob.text)}”.` };
+    if (selJobs.some((j) => j.text === s.text)) return { problem: `Already defining “${shorten(s.text)}”.` };
     const known = M.termFor(s.text);
+    selAsked++;
     if (known) { openPop(known.id, () => s.rect, true); return { known: true }; }
-    pendingSel = s;
+    pendingSels.set(s.text, { ...s, n: selAsked });
     return { text: s.text, context: s.context, nwo: pageNwo() };
+  }
+
+  // Words waiting for or being defined pulse between two highlights (steady with reduced motion).
+  let pulseT = 0, pulseOn = false;
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  function renderPending() {
+    clearInterval(pulseT); pulseT = 0;
+    if (!window.CSS?.highlights) return;
+    CSS.highlights.delete('ghl-pending'); CSS.highlights.delete('ghl-pending-dim');
+    const ranges = selJobs.map((j) => j.range).filter((r) => r && r.startContainer.isConnected);
+    if (!ranges.length) return;
+    const show = () => {
+      pulseOn = !pulseOn;
+      CSS.highlights.delete(pulseOn ? 'ghl-pending-dim' : 'ghl-pending');
+      CSS.highlights.set(pulseOn ? 'ghl-pending' : 'ghl-pending-dim', new Highlight(...ranges));
+    };
+    show();
+    if (!calm.matches) pulseT = setInterval(show, 700);
   }
 
   let selTick = 0;
   async function trackSelect() {
     clearTimeout(selTick);
-    if (!selJob) return;
-    let job = null;
-    try { job = await api('GET', '/api/job', { query: { key: selJob.key } }); } catch (e) {
-      // The host stopped or forgot the job (it restarted): the term may or may not have been saved.
-      const text = selJob.text; selJob = null;
-      await load();
-      note = { text: `Lost track of defining “${shorten(text)}”: ${e.message}${data && !M.termFor(text) ? '. It was not defined; try again.' : ''}`, tone: 'bad' };
-      renderTab(); return;
-    }
-    if (job.state === 'error') {
-      note = { text: `Defining “${shorten(selJob.text)}” failed: ${job.error}`, tone: 'bad' }; selJob = null; renderTab(); return;
-    }
-    if (job.state === 'done') {
-      const { termId } = job.result || {}; const rect = selJob.rect; const text = selJob.text;
-      selJob = null;
-      await load();
-      note = { text: `Defined “${shorten(text)}”.` }; renderTab();
-      const id = termId && M.byId[termId] ? termId : M.termFor(text)?.id;
-      if (id) {
-        const e = [...blockEntries.values()].flat().find((x) => x.id === id && x.range.getBoundingClientRect().top > 0);
-        openPop(id, e ? () => e.range.getBoundingClientRect() : () => rect, true, e?.range);
+    if (!selJobs.length) { renderPending(); return; }
+    const done = [], notes = [];
+    for (const j of [...selJobs]) {
+      let job = null;
+      try { job = await api('GET', '/api/job', { query: { key: j.key } }); } catch (e) {
+        // The host stopped or forgot the job (it restarted): the term may or may not have been saved.
+        selJobs = selJobs.filter((x) => x !== j);
+        notes.push({ lost: j, why: e.message });
+        continue;
       }
-      return;
+      j.state = job.state;
+      if (job.state === 'error') { selJobs = selJobs.filter((x) => x !== j); notes.push({ text: `Defining “${shorten(j.text)}” failed: ${job.error}`, tone: 'bad' }); }
+      else if (job.state === 'done') { selJobs = selJobs.filter((x) => x !== j); done.push({ j, termId: job.result?.termId }); }
     }
-    renderTab();
-    selTick = setTimeout(trackSelect, 2000);
+    if (done.length || notes.some((n) => n.lost)) await load();
+    for (const n of notes) if (n.lost) Object.assign(n, { text: `Lost track of defining “${shorten(n.lost.text)}”: ${n.why}${data && !M.termFor(n.lost.text) ? '. It was not defined; try again.' : ''}`, tone: 'bad' });
+    if (done.length) notes.push({ text: `Defined ${done.map(({ j }) => `“${shorten(j.text)}”`).join(', ')}.` });
+    if (notes.length) note = { text: notes.map((n) => n.text).join('\n'), tone: notes.some((n) => n.tone === 'bad') ? 'bad' : '' };
+    renderPending(); renderTab();
+    // Only the Define asked for last opens by itself; the others are underlined where they occur.
+    const last = done.find(({ j }) => j.n === selAsked);
+    if (last) {
+      const { j, termId } = last;
+      const id = termId && M.byId[termId] ? termId : M.termFor(j.text)?.id;
+      if (id) {
+        const own = j.range && j.range.startContainer.isConnected ? j.range : null;
+        const e = own ? null : [...blockEntries.values()].flat().find((x) => x.id === id && x.range.getBoundingClientRect().top > 0);
+        const at = own || e?.range;
+        openPop(id, at ? () => at.getBoundingClientRect() : () => j.rect, true, at);
+      }
+    }
+    if (selJobs.length) selTick = setTimeout(trackSelect, 2000);
   }
 
   // ---------- messages from the extension (service worker, relayed from the frame and the popup) ----------
@@ -437,11 +467,12 @@
       if (m.event === 'close') { hidePop(true); return false; }
       return false;
     }
-    if (m?.type === 'page-info') { reply({ nwo: pageNwo(), status: R ? { note, selJob: selJob && { text: selJob.text, startedAt: selJob.startedAt } } : null }); return false; }
+    if (m?.type === 'page-info') { reply({ nwo: pageNwo(), status: R ? { note, selJobs: selJobs.map((j) => ({ text: j.text, startedAt: j.startedAt, state: j.state })) } : null }); return false; }
     if (m?.type === 'selection') { reply(selectionRequest()); return false; }
-    if (m?.type === 'select-started' && pendingSel && m.text === pendingSel.text) {
-      selJob = { key: m.key, text: pendingSel.text, startedAt: Date.now(), rect: pendingSel.rect };
-      pendingSel = null; note = null; renderTab(); trackSelect(); return false;
+    if (m?.type === 'select-started' && pendingSels.has(m.text)) {
+      const p = pendingSels.get(m.text); pendingSels.delete(m.text);
+      if (!selJobs.some((j) => j.key === m.key)) selJobs.push({ key: m.key, text: p.text, startedAt: Date.now(), rect: p.rect, range: p.range || null, n: p.n, state: 'queued' });
+      note = null; renderPending(); renderTab(); trackSelect(); return false;
     }
     if (m?.type === 'note') { note = { text: String(m.text || ''), tone: m.tone === 'bad' ? 'bad' : '' }; renderTab(); return false; }
     if (m?.type === 'reload') { note = null; load(); return false; }
@@ -492,7 +523,7 @@
     const changed = (nr && nr.key) !== (R && R.key);
     R = nr; hidePop(true);
     if (!R) { CSS.highlights?.clear(); renderTab(); return; }
-    if (changed) { data = null; note = null; selJob = null; compileGlossary(); renderTab(); load(); }
+    if (changed) { data = null; note = null; selJobs = []; pendingSels.clear(); renderPending(); compileGlossary(); renderTab(); load(); }
     else setTimeout(refresh, 300);
   }
   setInterval(onRoute, 600);

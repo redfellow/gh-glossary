@@ -38,7 +38,7 @@ function statusLines() {
     ? { text: `The gh-glossary host is not reachable (${esc(error.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
     : { text: esc(error.message), tone: 'bad' });
   if (status?.note) lines.push({ text: esc(status.note.text), tone: status.note.tone });
-  if (status?.selJob) lines.push({ text: `Defining “${esc(status.selJob.text)}” (${Math.round((Date.now() - status.selJob.startedAt) / 1000)} s)…` });
+  for (const j of status?.selJobs || []) lines.push({ text: j.state === 'queued' ? `Defining “${esc(j.text)}”: queued` : `Defining “${esc(j.text)}” (${Math.round((Date.now() - j.startedAt) / 1000)} s)…` });
   if (!data) return lines;
   const terms = data.glossary?.terms || [];
   const dj = data.defineJob, pi = data.pageInfo;
