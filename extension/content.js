@@ -222,14 +222,16 @@
   // The frame (popover.html) draws the definition; this script only says which term, and places it.
   // showSeq: which show the frame's height report belongs to. The frame stays invisible until it has
   // drawn the term it was just asked for, so it never flashes the previous term or an empty box.
-  let popOpen = false, pinned = false, anchorRect = null, hoverEntry = null, showT = 0, hideT = 0, frameH = 120, showSeq = 0;
+  // side: whether the box opened below or above its term. It is kept while the box stays open, so a
+  // linked term of another height is drawn in the same place instead of jumping to the other side.
+  let popOpen = false, pinned = false, anchorRect = null, hoverEntry = null, showT = 0, hideT = 0, frameH = 120, showSeq = 0, side = null;
   function place() {
     if (!anchorRect) return;
     const r = anchorRect(); if (!r) return;
     const pw = frame.offsetWidth || 420, ph = frameH, m = 12;
     const x = Math.min(Math.max(m, r.left), innerWidth - pw - m);
-    let y = r.bottom + 8;
-    if (y + ph > innerHeight - m && r.top - ph - 8 > m) y = r.top - ph - 8;
+    if (!side) side = r.bottom + 8 + ph > innerHeight - m && r.top - ph - 8 > m ? 'above' : 'below';
+    const y = side === 'above' ? r.top - ph - 8 : r.bottom + 8;
     frame.style.left = x + 'px'; frame.style.top = Math.max(m, Math.min(y, innerHeight - ph - m)) + 'px';
     frame.style.height = Math.min(ph, innerHeight - 2 * m) + 'px';
   }
@@ -242,7 +244,7 @@
     if (!M.byId[id]) return;
     clearTimeout(hideT);
     if (pin) clearTimeout(showT); // a pending hover must not reopen it unpinned
-    pinned = pin; anchorRect = rectFn; popOpen = true;
+    pinned = pin; anchorRect = rectFn; popOpen = true; side = null;
     // The box may use three quarters of the page's height: the frame cannot see the page's height itself.
     toExtension({ type: 'pop-show', nonce, id, pinned: pin, seq: ++showSeq, maxH: Math.round(innerHeight * 0.75) });
     frame.style.visibility = 'hidden'; frame.hidden = false; place();
@@ -251,7 +253,7 @@
   function hidePop(force) {
     if (pinned && !force) return;
     if (popOpen) toExtension({ type: 'pop-hide', nonce });
-    frame.hidden = true; popOpen = false; pinned = false; anchorRect = null; setActiveRange(null);
+    frame.hidden = true; popOpen = false; pinned = false; anchorRect = null; side = null; setActiveRange(null);
   }
 
   let raf = 0, lastXY = null;
@@ -423,7 +425,11 @@
     if (m?.type === 'frame' && m.nonce === nonce) {
       if (m.event === 'ready') { sendGlossary(); return false; }
       if (m.event === 'height') {
-        frameH = Math.max(40, Math.min(Number(m.value?.h) || 120, innerHeight - 24)); place();
+        // The side is chosen from the height of the term just asked for, not from the previous one.
+        const first = m.value?.seq === showSeq && frame.style.visibility === 'hidden';
+        frameH = Math.max(40, Math.min(Number(m.value?.h) || 120, innerHeight - 24));
+        if (first) side = null;
+        place();
         if (m.value?.seq === showSeq) frame.style.visibility = '';
         return false;
       }
