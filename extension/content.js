@@ -109,7 +109,7 @@
     return (0.299 * r + 0.587 * g + 0.114 * b) < 128;
   }
   function sendGlossary() {
-    toExtension({ type: 'pop-glossary', nonce, repo: R?.repo || '', dark: pageIsDark(), terms: data?.glossary?.terms || [] });
+    toExtension({ type: 'pop-glossary', nonce, repo: R?.repo || '', dark: pageIsDark(), outsideMode: data?.outsideMode || 'off', terms: data?.glossary?.terms || [] });
   }
   function compileGlossary() {
     M = matcher(data?.glossary?.terms || []);
@@ -436,11 +436,12 @@
       }
       j.state = job.state;
       if (job.state === 'error') { selJobs = selJobs.filter((x) => x !== j); notes.push({ text: `Defining “${shorten(j.text)}” failed: ${job.error}`, tone: 'bad' }); }
-      else if (job.state === 'done') { selJobs = selJobs.filter((x) => x !== j); done.push({ j, termId: job.result?.termId }); }
+      else if (job.state === 'done') { selJobs = selJobs.filter((x) => x !== j); done.push({ j, termId: job.result?.termId, notes: job.result?.notes }); }
     }
     if (done.length || notes.some((n) => n.lost)) await load();
     for (const n of notes) if (n.lost) Object.assign(n, { text: `Lost track of defining “${shorten(n.lost.text)}”: ${n.why}${data && !M.termFor(n.lost.text) ? '. It was not defined; try again.' : ''}`, tone: 'bad' });
     if (done.length) notes.push({ text: `Defined ${done.map(({ j }) => `“${shorten(j.text)}”`).join(', ')}.` });
+    for (const d of done) if (d.notes) notes.push({ text: `The run on “${shorten(d.j.text)}” reported: ${d.notes}` });
     if (notes.length) note = { text: notes.map((n) => n.text).join('\n'), tone: notes.some((n) => n.tone === 'bad') ? 'bad' : '' };
     renderPending(); renderTab();
     // Only the Define asked for last opens by itself; the others are underlined where they occur.
@@ -507,8 +508,9 @@
     try {
       const d = await api('GET', '/api/page', { query: pageQuery(R) });
       if (R !== r) return;
-      // Any change counts, a Thorough correction of a definition or pattern included.
-      const sig = (x) => JSON.stringify(x?.glossary?.terms ?? null);
+      // Any change counts, a Thorough correction of a definition or pattern included, and the outside
+      // mode, which the definition box shows.
+      const sig = (x) => JSON.stringify([x?.outsideMode ?? null, x?.glossary?.terms ?? null]);
       const changed = sig(d) !== sig(data);
       data = d;
       if (changed) { compileGlossary(); await refresh(); } else renderTab();

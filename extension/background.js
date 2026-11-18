@@ -159,6 +159,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       return { code: 200, body: { ask: askView(asking) } };
     }
     if (msg?.type === 'allow-answer' && fromPopup(sender)) return answerAsk(msg.id, msg.scope);
+    // How outside pages are treated is the reader's choice, made in the popup like an allow.
+    if (msg?.type === 'set-outside' && fromPopup(sender)) return call('POST', '/api/outside', { body: { mode: msg.mode } });
     // The content script's tab click: only the reader's own click reaches here (the content script
     // checks isTrusted), and opening the popup starts nothing by itself.
     if (msg?.type === 'open-popup' && fromGithubTab(sender)) {
