@@ -110,6 +110,17 @@ function routeOfUrl(url, nwo = '') {
   return u.origin === 'https://github.com' ? route(nwo, u.pathname) : null;
 }
 
+// A content script reads only for the repository its own tab shows: the glossary of that page, and
+// Select jobs, whose keys start with the repository. Another github.com tab (or a compromised page
+// renderer) cannot read the glossaries of other repositories, private ones included.
+function contentReadOk(sender, p, query) {
+  const repo = routeOfUrl(sender.tab?.url || '')?.repo?.toLowerCase();
+  if (!repo) return false;
+  if (p === '/api/page') return String(query?.repo ?? '').toLowerCase() === repo;
+  if (p === '/api/job') return String(query?.key ?? '').toLowerCase().startsWith(`${repo}#`);
+  return false;
+}
+
 async function sendToClaude(req) {
   const { templates = DEFAULT_TEMPLATES, folders = {} } = await chrome.storage.local.get(['templates', 'folders']);
   const key = Object.keys(folders).find((k) => k.toLowerCase() === String(req.repo).toLowerCase());
@@ -127,7 +138,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     if (msg?.type === 'api') {
       const r = `${msg.method} ${msg.path}`;
-      const ok = (fromGithubTab(sender) && CONTENT_ROUTES.has(r)) || (fromPopup(sender) && POPUP_ROUTES.has(r)) || (fromOptions(sender) && OPTIONS_ROUTES.has(r));
+      const ok = (fromGithubTab(sender) && CONTENT_ROUTES.has(r) && contentReadOk(sender, msg.path, msg.query)) || (fromPopup(sender) && POPUP_ROUTES.has(r)) || (fromOptions(sender) && OPTIONS_ROUTES.has(r));
       if (!ok) return { code: 403, body: { error: 'not allowed from here' } };
       return call(msg.method, msg.path, { query: msg.query, body: msg.body });
     }

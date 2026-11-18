@@ -33,14 +33,19 @@ function originLink(t) {
   const other = from !== repo ? ` in ${from.split('/')[1]}` : '';
   return `from <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>${esc(other)}${sha ? ` at ${esc(sha)}` : ''}`;
 }
-// A run may write any link, and a run can be prompt-injected: only https, the host shown on the
-// link, and no query or fragment, so a link cannot carry what the run read off to another site.
+// A run may write any link, and a run can be prompt-injected, so a link could carry what the run read
+// off to another site. Only https, no query or fragment, a path of at most LINK_PATH characters (a
+// longer one is dropped and the link goes to the site's front page), and the box shows the whole
+// address it opens, host and path, so nothing travels in it unseen.
+const LINK_PATH = 120;
 function linkOf(raw) {
   if (typeof raw !== 'string' || raw.length > 500) return null;
   let u; try { u = new URL(raw); } catch { return null; }
   if (u.protocol !== 'https:' || u.username || u.password) return null;
   u.search = ''; u.hash = '';
-  return { href: u.href, host: u.host };
+  if (u.pathname.length > LINK_PATH) u.pathname = '/';
+  const shown = u.host + (u.pathname === '/' ? '' : u.pathname);
+  return { href: u.href, host: u.host, shown };
 }
 // Other known terms inside a definition become buttons that show them.
 function wrapTermsIn(el, exclude) {
@@ -68,7 +73,7 @@ function renderPop() {
   const head = `<span class="kind">Definition</span>${g.category ? `<span class="layer">${esc(g.category)}</span>` : ''}<span class="layer ${g.layer === 'org' ? 'org' : ''}">${layerLabel(g)}</span>`;
   const safeLink = linkOf(g.link);
   const body = `<div class="pt">${esc(g.term)}</div>${g.where ? `<div class="where">${esc(g.where)}</div>` : ''}<div class="pdef">${fmt(g.def)}</div>
-    ${safeLink ? `<div style="margin-top:8px"><a href="${esc(safeLink.href)}" target="_blank" rel="noopener noreferrer">Open link on ${esc(safeLink.host)}</a></div>` : ''}`;
+    ${safeLink ? `<div style="margin-top:8px"><a href="${esc(safeLink.href)}" target="_blank" rel="noopener noreferrer" class="link">Open ${esc(safeLink.shown)}</a></div>` : ''}`;
   const when = g.definedAt ? new Date(g.definedAt).toLocaleDateString() : '';
   const checked = g.verified === true ? 'Verified at source' : g.verified === false ? 'Not verified at source' : '';
   const revised = g.revisedAt ? `<br>Revised ${esc(new Date(g.revisedAt).toLocaleDateString())}: ${esc(g.revisionReason || '')}` : '';
