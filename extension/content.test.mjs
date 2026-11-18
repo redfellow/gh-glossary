@@ -109,7 +109,7 @@ test('Several Defines may run; pending words are marked; only the last one asked
   const sel = from(content, 'function selectionRequest()', 900);
   assert.ok(!sel.includes('Still defining'), 'a running Define does not block another');
   assert.match(sel, /selJobs\.some\(\(j\) => j\.text === s\.text\)\) return \{ problem: `Already defining/);
-  assert.match(sel, /selAsked\+\+;\n\s*if \(known\)/, 'a known-term Define also counts as the last one asked for');
+  assert.match(sel, /selAsked\+\+;\s*if \(known\)/, 'a known-term Define also counts as the last one asked for');
   const track = from(content, 'async function trackSelect()', 2600);
   assert.match(track, /const last = done\.find\(\(\{ j \}\) => j\.n === selAsked\);/);
   assert.equal((track.match(/openPop\(/g) || []).length, 1, 'one place opens a box, for the last Define only');
