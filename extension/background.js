@@ -127,8 +127,8 @@ function showUpdate(u) {
   const on = u?.state === 'available';
   chrome.action.setBadgeText({ text: on ? '↑' : '' }).catch(() => {});
   if (on) chrome.action.setBadgeBackgroundColor({ color: '#1f6feb' }).catch(() => {});
-  chrome.action.setTitle({ title: on ? `gh-glossary: an update is ready (${u.count} new)` : 'gh-glossary' }).catch(() => {});
-  chrome.contextMenus.update('ghl-update', { visible: on, title: on ? `Update gh-glossary now (${u.count} new)` : 'Update gh-glossary now' }, () => void chrome.runtime.lastError);
+  chrome.action.setTitle({ title: on ? `GitHub Glossary: an update is ready (${u.count} new)` : 'GitHub Glossary' }).catch(() => {});
+  chrome.contextMenus.update('ghl-update', { visible: on, title: on ? `Update GitHub Glossary now (${u.count} new)` : 'Update GitHub Glossary now' }, () => void chrome.runtime.lastError);
 }
 // Moves main to the commit last checked, then reloads the extension, which restarts the host on the
 // new code. What happened is kept for the popup to say after the reload.
@@ -231,8 +231,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 const shorten = (t, n = 28) => t.length > n ? t.slice(0, n - 1) + '…' : t;
 function setupMenu() {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: 'ghl-define', title: 'Define “%s” with gh-glossary', contexts: ['selection'], documentUrlPatterns: ['https://github.com/*'] });
-    chrome.contextMenus.create({ id: 'ghl-update', title: 'Update gh-glossary now', contexts: ['action'], visible: false }, () => {
+    chrome.contextMenus.create({ id: 'ghl-define', title: 'Define “%s” with GitHub Glossary', contexts: ['selection'], documentUrlPatterns: ['https://github.com/*'] });
+    chrome.contextMenus.create({ id: 'ghl-update', title: 'Update GitHub Glossary now', contexts: ['action'], visible: false }, () => {
       void chrome.runtime.lastError;
       chrome.storage.local.get('update').then(({ update }) => showUpdate(update)).catch(() => {});
     });
@@ -257,7 +257,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!s || s.known) return;
   if (s.problem) { note(s.problem, 'bad'); return; }
   const R = routeOfUrl(tab.url, s.nwo);
-  if (!R) { note('This page is not one gh-glossary handles.', 'bad'); return; }
+  if (!R) { note('This page is not one GitHub Glossary handles.', 'bad'); return; }
   const started = (r) => chrome.tabs.sendMessage(tab.id, { type: 'select-started', key: r.body.key, text: s.text }).catch(() => {});
   const r = await startRun('/api/select', { ...pageQuery(R), text: s.text, context: s.context }, tab.id, tab.url, {
     what: `Define “${shorten(s.text)}”`, after: started, cancelled: () => note(`Not allowed: “${shorten(s.text)}” was not defined.`),
@@ -266,8 +266,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // Not allowed yet: the popup asks. If Chrome cannot open it now, the tab says where to answer.
     let opened = true;
     try { await chrome.action.openPopup({ windowId: tab.windowId }); } catch { opened = false; }
-    note(opened ? `${R.repo} is not allowed yet: answer in the gh-glossary popup to define “${shorten(s.text)}”.`
-      : `${R.repo} is not allowed yet: click the gh-glossary tab to allow it and define “${shorten(s.text)}”.`, 'bad');
+    note(opened ? `${R.repo} is not allowed yet: answer in the GitHub Glossary popup to define “${shorten(s.text)}”.`
+      : `${R.repo} is not allowed yet: click the GitHub Glossary tab to allow it and define “${shorten(s.text)}”.`, 'bad');
   } else if (r.code !== 202) note(`Could not define “${shorten(s.text)}”: ${r.body?.error || `error ${r.code}`}`, 'bad');
 });
 

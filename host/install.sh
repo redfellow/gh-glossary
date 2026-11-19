@@ -39,7 +39,7 @@ write_manifest() {
   cat > "$1/NativeMessagingHosts/$NAME.json" <<EOF
 {
   "name": "$NAME",
-  "description": "gh-glossary host: runs Claude to define terms on GitHub pages",
+  "description": "GitHub Glossary host: runs Claude to define terms on GitHub pages",
   "path": "$LAUNCHER",
   "type": "stdio",
   "allowed_origins": ["chrome-extension://$EXT_ID/"]

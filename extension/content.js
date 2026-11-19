@@ -90,7 +90,7 @@
       background: var(--bgColor-default, #fff); border: 1px solid var(--borderColor-default, #d1d9e0); box-shadow: 0 6px 20px rgba(0,0,0,.18); cursor: default; }
     #toast.bad { border-color: var(--borderColor-danger-emphasis, #cf222e); }
     #toast[hidden] { display: none; }
-  </style><div id="tab" hidden></div><div id="toast" role="status" hidden></div><iframe id="pop" hidden title="gh-glossary definition"></iframe>`;
+  </style><div id="tab" hidden></div><div id="toast" role="status" hidden></div><iframe id="pop" hidden title="GitHub Glossary definition"></iframe>`;
   const tab = root.getElementById('tab');
   const toast = root.getElementById('toast');
   const frame = root.getElementById('pop');
@@ -325,12 +325,12 @@
     tab.hidden = !R;
     if (!R) return;
     tab.className = dock.side;
-    tab.style.top = Math.min(Math.max(0, dock.top), innerHeight - 90) + 'px';
+    tab.style.top = Math.min(Math.max(0, dock.top), innerHeight - (tab.offsetHeight || 90)) + 'px';
     const dj = data?.defineJob;
     const dot = busy(dj) || selJobs.length ? 'busy' : note?.tone === 'bad' || dj?.state === 'error' ? 'bad' : '';
     const n = M.count;
     tab.title = statusText();
-    tab.innerHTML = `<div class="badge">${dot ? `<span class="dot ${dot}"></span>` : ''}<span>gh-glossary</span>${n ? `<span class="n ${defsOn ? '' : 'off'}">${n}</span>` : ''}</div>`;
+    tab.innerHTML = `<div class="badge">${dot ? `<span class="dot ${dot}"></span>` : ''}<span>GitHub Glossary</span>${n ? `<span class="n ${defsOn ? '' : 'off'}">${n}</span>` : ''}</div>`;
   }
   addEventListener('resize', renderTab);
 
@@ -353,14 +353,14 @@
   tab.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const y0 = e.clientY, x0 = e.clientX, top0 = Math.min(Math.max(0, dock.top), innerHeight - 90);
+    const y0 = e.clientY, x0 = e.clientX, top0 = Math.min(Math.max(0, dock.top), innerHeight - (tab.offsetHeight || 90));
     let moved = false;
     const move = (ev) => {
       if (!moved && Math.abs(ev.clientY - y0) < 4 && Math.abs(ev.clientX - x0) < 4) return;
       moved = true; tab.classList.add('dragging');
       const side = ev.clientX < innerWidth / 2 ? 'left' : 'right';
       if (side !== dock.side) { dock = { ...dock, side }; tab.classList.remove('left', 'right'); tab.classList.add(side); }
-      tab.style.top = Math.min(Math.max(0, top0 + ev.clientY - y0), innerHeight - 90) + 'px';
+      tab.style.top = Math.min(Math.max(0, top0 + ev.clientY - y0), innerHeight - (tab.offsetHeight || 90)) + 'px';
     };
     const up = (ev) => {
       removeEventListener('mousemove', move, true); removeEventListener('mouseup', up, true);
@@ -400,7 +400,7 @@
   const pendingSels = new Map(); // text -> the selection, until the service worker says its run started
   // What the context menu's Define should do with the current selection.
   function selectionRequest() {
-    if (!R) return { problem: 'This page is not one gh-glossary handles.' };
+    if (!R) return { problem: 'This page is not one GitHub Glossary handles.' };
     const s = currentSelection();
     if (!s) return { problem: 'Nothing is selected.' };
     if (s.field) return { problem: 'Text in a comment box or other field is not defined.' };
@@ -517,7 +517,7 @@
       if (busy(d.defineJob)) pollT = setTimeout(load, 8000);
     } catch (e) {
       if (R !== r) return;
-      data = null; note = { text: e.code === 'down' ? `The gh-glossary host is not reachable (${e.message}).` : e.message, tone: 'bad' }; renderTab();
+      data = null; note = { text: e.code === 'down' ? `The GitHub Glossary host is not reachable (${e.message}).` : e.message, tone: 'bad' }; renderTab();
     }
   }
 

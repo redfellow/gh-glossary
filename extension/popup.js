@@ -45,7 +45,7 @@ function statusLines() {
   const lines = [];
   if (notice) lines.push(notice);
   if (error) lines.push(error.code === 'down'
-    ? { text: `The gh-glossary host is not reachable (${esc(error.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
+    ? { text: `The GitHub Glossary host is not reachable (${esc(error.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
     : { text: esc(error.message), tone: 'bad' });
   if (status?.note) lines.push({ text: esc(status.note.text), tone: status.note.tone });
   for (const j of status?.selJobs || []) lines.push({ text: j.state === 'queued' ? `Defining “${esc(j.text)}”: queued` : `Defining “${esc(j.text)}” (${Math.round((Date.now() - j.startedAt) / 1000)} s)…` });
@@ -70,7 +70,7 @@ function updateHtml() {
   if (updNote) lines.push(`<div class="${updNote.tone || ''}">${updNote.text}</div>`);
   if (upd?.state === 'available') {
     const more = upd.count > upd.titles.length ? `<li>and ${upd.count - upd.titles.length} more</li>` : '';
-    lines.push(`<div class="row"><span class="lbl">gh-glossary update: ${upd.count} new commit${upd.count === 1 ? '' : 's'}</span><button class="btn" data-update>Update now</button></div>
+    lines.push(`<div class="row"><span class="lbl">GitHub Glossary update: ${upd.count} new commit${upd.count === 1 ? '' : 's'}</span><button class="btn" data-update>Update now</button></div>
       <ul class="commits">${upd.titles.map((t) => `<li>${esc(t)}</li>`).join('')}${more}</ul>
       ${upd.local ? `<div class="hint">Your ${upd.local} commit${upd.local === 1 ? '' : 's'} on main that ${upd.local === 1 ? 'is' : 'are'} not on GitHub will be replaced (<code>git reflog</code> keeps ${upd.local === 1 ? 'it' : 'them'}).</div>` : ''}`);
   }
@@ -80,7 +80,7 @@ function updateHtml() {
 function renderAsk() {
   const [owner, name] = ask.repo.split('/');
   main.innerHTML = `
-    <div class="row"><span class="title">gh-glossary</span></div>
+    <div class="row"><span class="title">GitHub Glossary</span></div>
     <div class="where">${esc(R.repo)} · ${esc(pageLabel())}</div>
     <p class="q">Let Claude define terms on ${esc(ask.repo)}?</p>
     <p class="hint">Runs use read-only tools on a local checkout of the repository. The page's text goes to Claude.${ask.what ? ` After you allow it: ${esc(ask.what)}.` : ''}</p>
@@ -95,12 +95,12 @@ function renderAsk() {
 
 function render() {
   if (R && ask) { renderAsk(); return; }
-  if (!R) { main.innerHTML = `<div class="row"><span class="title">gh-glossary</span></div>${updateHtml()}<div class="status">This page is not one gh-glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>`; return; }
+  if (!R) { main.innerHTML = `<div class="row"><span class="title">GitHub Glossary</span></div>${updateHtml()}<div class="status">This page is not one GitHub Glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>`; return; }
   const dj = data?.defineJob;
   const dis = !data || busy(dj) ? 'disabled' : '';
   const n = data?.glossary?.terms?.length || 0;
   main.innerHTML = `
-    <div class="row"><span class="title">gh-glossary</span>
+    <div class="row"><span class="title">GitHub Glossary</span>
       <button class="sw" role="switch" aria-checked="${defsOn}" data-sw><i></i>Definitions${n ? ` (${n})` : ''}</button></div>
     <div class="where">${esc(R.repo)} · ${esc(pageLabel())}</div>
     ${updateHtml()}
@@ -128,7 +128,7 @@ main.addEventListener('click', async (e) => {
     updNote = { text: 'Updating…' }; render();
     const r = await send({ type: 'update-apply' });
     // On success the extension reloads, which closes this popup.
-    if (r?.code === 200 && !r.body?.updated) { upd = null; updNote = { text: 'gh-glossary is up to date.' }; }
+    if (r?.code === 200 && !r.body?.updated) { upd = null; updNote = { text: 'GitHub Glossary is up to date.' }; }
     else if (r?.code !== 200) {
       ({ update: upd } = (await send({ type: 'update-status' }))?.body || {});
       updNote = { text: esc(r?.body?.error || 'Could not update.'), tone: 'bad' };
@@ -192,7 +192,7 @@ main.addEventListener('change', async (e) => {
     const b = r?.body || {};
     upd = b.update || null;
     if (b.updateError) updNote = { text: esc(b.updateError), tone: 'bad' };
-    else if (b.updated) updNote = { text: `Updated gh-glossary${b.updated.count ? ` (${b.updated.count} new commit${b.updated.count === 1 ? '' : 's'})` : ''}.${b.updated.reinstall ? ' The installer changed: run <code>host/install.sh</code> again (Windows: <code>host\\install.cmd</code>).' : ''}` };
+    else if (b.updated) updNote = { text: `Updated GitHub Glossary${b.updated.count ? ` (${b.updated.count} new commit${b.updated.count === 1 ? '' : 's'})` : ''}.${b.updated.reinstall ? ' The installer changed: run <code>host/install.sh</code> again (Windows: <code>host\\install.cmd</code>).' : ''}` };
     if (upd?.state === 'available' || updNote) render();
   }).catch(() => {});
   if (R) { try { ask = (await send({ type: 'allow-pending', tabId: tab.id }))?.body?.ask || null; } catch {} }

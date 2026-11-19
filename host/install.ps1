@@ -55,7 +55,7 @@ switch ($Action) {
     ) -join "`r`n")
     WriteText $Manifest ((@{
       name = $Name
-      description = 'gh-glossary host: runs Claude to define terms on GitHub pages'
+      description = 'GitHub Glossary host: runs Claude to define terms on GitHub pages'
       path = $Launcher
       type = 'stdio'
       allowed_origins = @("chrome-extension://$ExtId/")

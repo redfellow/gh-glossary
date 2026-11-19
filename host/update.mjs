@@ -43,7 +43,7 @@ export async function updateStatus(git) {
 export async function applyUpdate(git, to) {
   if (typeof to !== 'string' || !SHA.test(to)) return { code: 400, body: { error: 'bad commit' } };
   const no = await blocked(git);
-  if (no) return { code: 409, body: { ...no, error: no.state === 'dirty' ? 'gh-glossary has uncommitted changes, so it was not updated.' : `gh-glossary is on ${no.branch || 'no branch'}, not ${BRANCH}, so it was not updated.` } };
+  if (no) return { code: 409, body: { ...no, error: no.state === 'dirty' ? 'The gh-glossary folder has uncommitted changes, so it was not updated.' : `The gh-glossary folder is on ${no.branch || 'no branch'}, not ${BRANCH}, so it was not updated.` } };
   const now = (await git(['rev-parse', REMOTE_REF])).trim();
   if (now !== to) return { code: 409, body: { error: 'The update changed since it was checked: check again.', stale: true } };
   const from = (await git(['rev-parse', 'HEAD'])).trim();
