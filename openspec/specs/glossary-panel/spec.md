@@ -86,13 +86,14 @@ known for the repository. The tab's tooltip repeats these lines.
 - **THEN** the popup says that Quick or Thorough will ask first
 
 ### Requirement: Host not reachable
-When the host cannot be reached, the popup SHALL say so, name the install script to run, and offer no
-page data, and the tab shows a red dot. When the extension was reloaded under an open page, the popup
-tells the reader to reload the page.
+When the host cannot be reached, the panel SHALL say so, name the install script to run, and offer
+no page data. When the extension was reloaded under an open page, it tells the reader to reload the
+page.
 
 #### Scenario: Host not installed
 - **WHEN** the host is not registered
-- **THEN** the popup says the host is not reachable and to run `host/install.sh`
+- **THEN** the panel says the host is not reachable and to run `host/install.sh`, or
+  `host\install.cmd` on Windows
 
 ### Requirement: The tab opens the controls
 The reader's click on the tab without dragging SHALL open the toolbar popup. A click made by a page
