@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "gh-glossary",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Definitions for the terms on GitHub pages, written by Claude on your machine.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv8wXA3x0Wu8rZ07NfSNhHM2OQha+MDrZC0vF0ZYQ03HuRpOln4n7k+X2Vnq75AfUbhfrqwfO2g6pTw9T2stYNjVkMJl96wdemN6aA/yXHZdteReL7b0bmM72X7ViFO0Q9ENjuEUpWi+k8gWXT5NDyeQ7eS+HvhoqbN3DEd6x0Dd09DsPKbeuF9/J3syhyEMA/taE4SrU359zVQ3exhmLydtgdPV5KLjvZab/C6jhX7+55IkTjq7LzaJm6bHUB/zn/qKEwQmVRWkRKlCb4OS53y6XGtKE9iTblohDVD2fvPFa66R2Sr/5NToWO3YglYiSp3J3Ym7msSA/xtMsQ5IZHQIDAQAB",
   "minimum_chrome_version": "127",
