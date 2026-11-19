@@ -15,4 +15,4 @@
 ## 3. Docs and checks
 
 - [x] 3.1 README: Updating notes on macOS, Windows and Linux
-- [ ] 3.2 Check in Chrome: badge, popup line, menu item, Update now reloads and the popup says it was updated
+- [x] 3.2 Check in Chrome: badge, popup line, menu item, Update now reloads and the popup says it was updated
