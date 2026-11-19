@@ -155,3 +155,14 @@ test('A context-menu Define that starts nothing says why beside the tab', () => 
   assert.match(content, /if \(m\.toast\) showToast\(note\.text, note\.tone\);/);
   assert.match(from(content, 'function showToast(', 200), /toast\.textContent = text/, 'the message is text, not HTML');
 });
+
+test('Readers see the name GitHub Glossary; the tab stays inside the window (openspec/changes/show-name-github-glossary)', () => {
+  assert.equal(manifest.name, 'GitHub Glossary');
+  assert.equal(manifest.action.default_title, 'GitHub Glossary');
+  assert.ok(!/<span class="title">gh-glossary</.test(popup) && popup.includes('<span class="title">GitHub Glossary</span>'), 'popup heading');
+  assert.match(bg, /title: 'Define “%s” with GitHub Glossary'/);
+  assert.match(read('options.html'), /<h1>GitHub Glossary<\/h1>/);
+  assert.match(content, /title="GitHub Glossary definition"/);
+  assert.ok(!/innerHeight - 90\b/.test(content), 'the tab is clamped by its real height');
+  assert.equal(content.match(/innerHeight - \(tab\.offsetHeight \|\| 90\)/g).length, 3);
+});
