@@ -87,7 +87,7 @@ test('Glossary text is escaped before it becomes HTML, in the frame', () => {
   assert.equal(linkOf('https://github.com/acme/widgets', ''), null, 'no owner known: no link');
   // Only two HTML writes in the content script: the shadow root's fixed markup and the tab's badge.
   assert.deepEqual([...content.matchAll(/(\w+)\.innerHTML = /g)].map((m) => m[1]), ['root', 'tab']);
-  assert.match(content, /tab\.innerHTML = `<div class="badge">\$\{dot \? `<span class="dot \$\{dot\}"><\/span>` : ''\}<span>gh-glossary<\/span>\$\{n \?/);
+  assert.match(content, /tab\.innerHTML = `<div class="badge">\$\{dot \? `<span class="dot \$\{dot\}"><\/span>` : ''\}<span>GitHub Glossary<\/span>\$\{n \?/);
 });
 
 test('A term from an outside page says so, and claims no verification, while the reader limits outside pages', () => {
@@ -150,8 +150,8 @@ test('Several Defines may run; pending words are marked; only the last one asked
 
 test('A context-menu Define that starts nothing says why beside the tab', () => {
   assert.match(bg, /type: 'note', text, tone, toast: true/);
-  assert.match(bg, /is not allowed yet: answer in the gh-glossary popup/);
-  assert.match(bg, /is not allowed yet: click the gh-glossary tab to allow it/);
+  assert.match(bg, /is not allowed yet: answer in the GitHub Glossary popup/);
+  assert.match(bg, /is not allowed yet: click the GitHub Glossary tab to allow it/);
   assert.match(content, /if \(m\.toast\) showToast\(note\.text, note\.tone\);/);
   assert.match(from(content, 'function showToast(', 200), /toast\.textContent = text/, 'the message is text, not HTML');
 });

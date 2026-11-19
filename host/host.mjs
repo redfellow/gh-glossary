@@ -255,7 +255,7 @@ async function claude(op, { repo, cwd, prompt, addDir, logPath, log }) {
   // The guard is the run's one barrier, so the run does not start without it. disableAllHooks: false
   // here wins over the reader's own settings; managed settings cannot be overridden and are checked.
   const off = hooksOffReason(managedSettingsFiles());
-  if (off) throw new Error(`Claude Code hooks are turned off (${off}), so gh-glossary cannot guard a run and will not start one.`);
+  if (off) throw new Error(`Claude Code hooks are turned off (${off}), so GitHub Glossary cannot guard a run and will not start one.`);
   const settings = { disableAllHooks: false, hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(process.execPath, GUARD) }] }] } };
   const readRules = [cwd, addDir].map((d) => readRule(fs.realpathSync(d)));
   const args = claudeArgs({ model, effort, schema: SCHEMAS[op], system, settings, addDir, readRules, budget });

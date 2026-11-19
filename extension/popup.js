@@ -42,7 +42,7 @@ function statusLines() {
   const lines = [];
   if (notice) lines.push(notice);
   if (error) lines.push(error.code === 'down'
-    ? { text: `The gh-glossary host is not reachable (${esc(error.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
+    ? { text: `The GitHub Glossary host is not reachable (${esc(error.message)}). Run <code>host/install.sh</code> (Windows: <code>host\\install.cmd</code>) from the gh-glossary folder, then reload the extension.`, tone: 'bad' }
     : { text: esc(error.message), tone: 'bad' });
   if (status?.note) lines.push({ text: esc(status.note.text), tone: status.note.tone });
   for (const j of status?.selJobs || []) lines.push({ text: j.state === 'queued' ? `Defining “${esc(j.text)}”: queued` : `Defining “${esc(j.text)}” (${Math.round((Date.now() - j.startedAt) / 1000)} s)…` });
@@ -65,7 +65,7 @@ function statusLines() {
 function renderAsk() {
   const [owner, name] = ask.repo.split('/');
   main.innerHTML = `
-    <div class="row"><span class="title">gh-glossary</span></div>
+    <div class="row"><span class="title">GitHub Glossary</span></div>
     <div class="where">${esc(R.repo)} · ${esc(pageLabel())}</div>
     <p class="q">Let Claude define terms on ${esc(ask.repo)}?</p>
     <p class="hint">Runs use read-only tools on a local checkout of the repository. The page's text goes to Claude.${ask.what ? ` After you allow it: ${esc(ask.what)}.` : ''}</p>
@@ -80,12 +80,12 @@ function renderAsk() {
 
 function render() {
   if (R && ask) { renderAsk(); return; }
-  if (!R) { main.innerHTML = '<div class="row"><span class="title">gh-glossary</span></div><div class="status">This page is not one gh-glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>'; return; }
+  if (!R) { main.innerHTML = '<div class="row"><span class="title">GitHub Glossary</span></div><div class="status">This page is not one GitHub Glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>'; return; }
   const dj = data?.defineJob;
   const dis = !data || busy(dj) ? 'disabled' : '';
   const n = data?.glossary?.terms?.length || 0;
   main.innerHTML = `
-    <div class="row"><span class="title">gh-glossary</span>
+    <div class="row"><span class="title">GitHub Glossary</span>
       <button class="sw" role="switch" aria-checked="${defsOn}" data-sw><i></i>Definitions${n ? ` (${n})` : ''}</button></div>
     <div class="where">${esc(R.repo)} · ${esc(pageLabel())}</div>
     <div class="row"><span class="lbl">${regen ? 'Redo this page:' : 'Define this page:'}</span>
