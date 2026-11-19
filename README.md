@@ -10,6 +10,8 @@ from the page, the repository's docs and its code. They are stored on your machi
 
 ![Hovering “name chip” in a README shows its definition, with links to related terms](assets/screenshots/hover-readme.png)
 
+---
+
 ## Setup
 
 Pick your system: [macOS](#macos) · [Windows](#windows) · [Linux](#linux).
@@ -47,6 +49,8 @@ signed in; and for **Send to Claude**, the Claude desktop app.
 5. Open any repository on github.com, click the **GitHub Glossary** tab on the right edge and click
    **Quick**.
 
+---
+
 ### Windows
 
 **You need:** Windows 10 or 11 with Chrome, Edge, Brave or Chromium; the `claude` CLI, signed in; and
@@ -82,6 +86,8 @@ are needed.
 5. Open any repository on github.com, click the **GitHub Glossary** tab on the right edge and click
    **Quick**.
 
+---
+
 ### Linux
 
 **You need:** Chrome, Chromium, Brave or Edge; the `claude` CLI, signed in; and for **Send to
@@ -116,12 +122,16 @@ Claude**, the Claude desktop app. The steps below are for Debian and Ubuntu.
 5. Open any repository on github.com, click the **GitHub Glossary** tab on the right edge and click
    **Quick**.
 
+---
+
 ### Updating and removing
 
 - **Update:** run `git pull` in the `gh-glossary` folder, then click the reload icon on the extension
   in `chrome://extensions`.
 - **Check or remove the browser connection:** run the install script with `status` or `uninstall`.
   Run it again (with no argument) if you move node, gh, git or claude.
+
+---
 
 ## Using it
 
@@ -171,6 +181,8 @@ already known, its definition opens straight away.
 The first time you run it on a repository, the popup asks whether to **Allow &lt;repo&gt;** or **Allow
 all of &lt;owner&gt;**. Your answers are listed in the extension's options, where you can remove them.
 
+---
+
 ## Security
 
 A GitHub page is text from the internet that anyone may have written, and some of it may try to give
@@ -213,6 +225,8 @@ Claude instructions. GitHub Glossary is built so that such text cannot make Clau
 **Send to Claude** is not covered by the above: it opens an ordinary Claude Code session, with your
 usual permissions, pointed at the pull request or document.
 
+---
+
 ## Settings
 
 Most settings are in the popup and the extension's options page. Models and limits are in
@@ -230,6 +244,8 @@ extension after editing it.
 For example: `{ "modes": { "thorough": { "model": "opus", "effort": "high", "maxBudgetUsd": 10 } } }`.
 A setting you leave out keeps its default.
 
+---
+
 ## Your data
 
 Everything is kept in the `cache/` folder inside `gh-glossary`:
@@ -245,6 +261,8 @@ To start a repository over, delete its folder under `cache/data/<owner>/`.
 What gets defined, and how, is set out in the
 [term-definition spec](openspec/specs/term-definition/spec.md).
 
+---
+
 ## Known limits
 
 - If underlines stop appearing, GitHub has probably changed its page layout. Please open an issue.
@@ -253,6 +271,8 @@ What gets defined, and how, is set out in the
   definition box says which).
 - A run going on when the browser quits is lost.
 - Windows support is new; please open an issue if something fails there.
+
+---
 
 ## Development
 
