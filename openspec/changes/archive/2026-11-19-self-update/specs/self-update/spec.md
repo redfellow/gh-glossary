@@ -33,6 +33,14 @@ right-click menu.
 - **WHEN** the popup opens again within a day of the last check
 - **THEN** the host is not asked again
 
+#### Scenario: GitHub cannot be reached
+- **WHEN** the fetch fails
+- **THEN** nothing changes, no update is offered, and the next check is a day later
+
+#### Scenario: Host not running
+- **WHEN** the host cannot be reached at the check
+- **THEN** nothing is recorded and the next use of the extension checks again
+
 ### Requirement: Only the reader installs an update
 An update SHALL be installed only from the popup's **Update now** or the icon's menu item, and only
 the commit that was checked. The content script, the definition frame, other extension pages and
