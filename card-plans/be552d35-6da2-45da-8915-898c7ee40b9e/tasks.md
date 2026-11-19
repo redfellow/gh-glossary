@@ -1,0 +1,3 @@
+- [x] 1.1 Set the extension version in `extension/manifest.json` to 1.1.0
+  - proof: `grep -E '"version": "1\.1\.0"' extension/manifest.json`
+  - proof: `node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"`

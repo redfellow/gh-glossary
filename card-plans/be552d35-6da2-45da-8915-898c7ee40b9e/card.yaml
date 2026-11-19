@@ -1,0 +1,13 @@
+format: 1
+slug: bump-version-number-to-1-1-0
+title: Bump version number to 1.1.0
+x-harvaaja-card: be552d35-6da2-45da-8915-898c7ee40b9e
+x-harvaaja-owner: b480b8ae-9b42-451b-865d-ff78d89e33ad
+x-harvaaja-owner-name: Sohvamäkki
+x-harvaaja-owner-person: Reijo
+route:
+  kind: chore
+  rationale: "Chore: built without a plan"
+  citations:
+    - The user pressed Build on this chore
+  revision: c3788c7a-c86f-422e-b8c7-5add5c0e76da
