@@ -30,7 +30,7 @@ detached HEAD, it SHALL fetch nothing and offer nothing. Untracked files do not 
 ### Requirement: Checked only when the reader uses the extension
 The extension SHALL check for an update only when the popup opens or a Define starts from the
 context menu, and at most once a day. A ready update SHALL show as a badge on the toolbar icon, a line
-in the popup with the commit titles and **Update now**, and **Update gh-glossary now** in the icon's
+in the popup with the commit titles and **Update now**, and **Update GitHub Glossary now** in the icon's
 right-click menu.
 
 #### Scenario: Popup opened twice in a day

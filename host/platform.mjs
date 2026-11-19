@@ -43,7 +43,7 @@ export function resolveCommand(cmd, args, { platform = process.platform, env = p
   if (target && exists(target)) {
     return /\.exe$/i.test(target) ? { file: target, args } : { file: node, args: [target, ...args] };
   }
-  throw new Error(`${found} is a batch file gh-glossary cannot start safely. Install the native ${cmd} (for claude: https://claude.com/download or "irm https://claude.ai/install.ps1 | iex").`);
+  throw new Error(`${found} is a batch file GitHub Glossary cannot start safely. Install the native ${cmd} (for claude: https://claude.com/download or "irm https://claude.ai/install.ps1 | iex").`);
 }
 
 // The PreToolUse hook command line. Claude Code runs it in a shell: sh on macOS and Linux, Git Bash on
