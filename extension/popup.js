@@ -6,6 +6,9 @@ const main = document.getElementById('main');
 
 let tab = null, R = null, data = null, status = null, error = null, regen = false, notice = null, defsOn = true;
 let ask = null; // { id, repo, what }: the question waiting for an answer
+// An update of gh-glossary itself (openspec/specs/self-update): the last check, a line about the update
+// just installed, and why one was refused.
+let upd = null, updNote = null;
 // The service worker drops a question this popup showed when the popup closes.
 chrome.runtime.connect({ name: 'popup' });
 
@@ -62,6 +65,18 @@ function statusLines() {
   return lines;
 }
 
+function updateHtml() {
+  const lines = [];
+  if (updNote) lines.push(`<div class="${updNote.tone || ''}">${updNote.text}</div>`);
+  if (upd?.state === 'available') {
+    const more = upd.count > upd.titles.length ? `<li>and ${upd.count - upd.titles.length} more</li>` : '';
+    lines.push(`<div class="row"><span class="lbl">gh-glossary update: ${upd.count} new commit${upd.count === 1 ? '' : 's'}</span><button class="btn" data-update>Update now</button></div>
+      <ul class="commits">${upd.titles.map((t) => `<li>${esc(t)}</li>`).join('')}${more}</ul>
+      ${upd.local ? `<div class="hint">Your ${upd.local} commit${upd.local === 1 ? '' : 's'} on main that ${upd.local === 1 ? 'is' : 'are'} not on GitHub will be replaced (<code>git reflog</code> keeps ${upd.local === 1 ? 'it' : 'them'}).</div>` : ''}`);
+  }
+  return lines.length ? `<div class="update">${lines.join('')}</div>` : '';
+}
+
 function renderAsk() {
   const [owner, name] = ask.repo.split('/');
   main.innerHTML = `
@@ -80,7 +95,7 @@ function renderAsk() {
 
 function render() {
   if (R && ask) { renderAsk(); return; }
-  if (!R) { main.innerHTML = '<div class="row"><span class="title">gh-glossary</span></div><div class="status">This page is not one gh-glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>'; return; }
+  if (!R) { main.innerHTML = `<div class="row"><span class="title">gh-glossary</span></div>${updateHtml()}<div class="status">This page is not one gh-glossary handles. Open a pull request, issue, discussion, file or repository home page on github.com.</div>`; return; }
   const dj = data?.defineJob;
   const dis = !data || busy(dj) ? 'disabled' : '';
   const n = data?.glossary?.terms?.length || 0;
@@ -88,6 +103,7 @@ function render() {
     <div class="row"><span class="title">gh-glossary</span>
       <button class="sw" role="switch" aria-checked="${defsOn}" data-sw><i></i>Definitions${n ? ` (${n})` : ''}</button></div>
     <div class="where">${esc(R.repo)} · ${esc(pageLabel())}</div>
+    ${updateHtml()}
     <div class="row"><span class="lbl">${regen ? 'Redo this page:' : 'Define this page:'}</span>
       <button class="btn" data-define="quick" ${dis} title="${esc(modeLabel('quick'))}, usually under a minute">Quick</button>
       <button class="btn" data-define="thorough" ${dis} title="${esc(modeLabel('thorough'))}, about 5 min">Thorough</button>
@@ -107,6 +123,18 @@ async function refresh() {
 }
 
 main.addEventListener('click', async (e) => {
+  const u = e.target.closest('[data-update]');
+  if (u && !u.disabled) {
+    updNote = { text: 'Updating…' }; render();
+    const r = await send({ type: 'update-apply' });
+    // On success the extension reloads, which closes this popup.
+    if (r?.code === 200 && !r.body?.updated) { upd = null; updNote = { text: 'gh-glossary is up to date.' }; }
+    else if (r?.code !== 200) {
+      ({ update: upd } = (await send({ type: 'update-status' }))?.body || {});
+      updNote = { text: esc(r?.body?.error || 'Could not update.'), tone: 'bad' };
+    }
+    render(); return;
+  }
   if (e.target.closest('[data-sw]')) { defsOn = !defsOn; await chrome.storage.local.set({ defs: defsOn }); render(); return; }
   const d = e.target.closest('[data-define]');
   if (d && !d.disabled) {
@@ -159,6 +187,14 @@ main.addEventListener('change', async (e) => {
   let nwo = '';
   if (url?.origin === 'https://github.com') { try { nwo = (await chrome.tabs.sendMessage(tab.id, { type: 'page-info' }))?.nwo || ''; } catch {} }
   R = url?.origin === 'https://github.com' ? route(nwo, url.pathname) : null;
+  // The update check may fetch from GitHub: the popup does not wait for it.
+  send({ type: 'update-status' }).then((r) => {
+    const b = r?.body || {};
+    upd = b.update || null;
+    if (b.updateError) updNote = { text: esc(b.updateError), tone: 'bad' };
+    else if (b.updated) updNote = { text: `Updated gh-glossary${b.updated.count ? ` (${b.updated.count} new commit${b.updated.count === 1 ? '' : 's'})` : ''}.${b.updated.reinstall ? ' The installer changed: run <code>host/install.sh</code> again (Windows: <code>host\\install.cmd</code>).' : ''}` };
+    if (upd?.state === 'available' || updNote) render();
+  }).catch(() => {});
   if (R) { try { ask = (await send({ type: 'allow-pending', tabId: tab.id }))?.body?.ask || null; } catch {} }
   render();
   if (!R) return;

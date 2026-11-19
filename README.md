@@ -62,8 +62,12 @@ everything you need, start to finish.
    the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
-**Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
-`chrome://extensions`. The host restarts with it.
+**Updating:** when an update is ready, the toolbar icon shows **↑**. Click **Update now** in the
+popup (or **Update gh-glossary now** in the icon's right-click menu): the extension updates
+`~/gh-glossary` and reloads itself, and the host restarts with it. It checks at most once a day, and only
+when you use the extension. It updates only a clean `main` (no uncommitted changes); on another
+branch it offers nothing. By hand: run `git pull` in `~/gh-glossary`, then click the reload icon on the
+extension in `chrome://extensions`.
 
 ### Windows
 
@@ -116,8 +120,12 @@ Run the commands below in PowerShell. No administrator rights are needed.
    the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
-**Updating:** run `git pull` in `$HOME\gh-glossary`, then click the reload icon on the extension in
-`chrome://extensions`. The host restarts with it.
+**Updating:** when an update is ready, the toolbar icon shows **↑**. Click **Update now** in the
+popup (or **Update gh-glossary now** in the icon's right-click menu): the extension updates
+`$HOME\gh-glossary` and reloads itself, and the host restarts with it. It checks at most once a day, and only
+when you use the extension. It updates only a clean `main` (no uncommitted changes); on another
+branch it offers nothing. By hand: run `git pull` in `$HOME\gh-glossary`, then click the reload icon on the
+extension in `chrome://extensions`.
 
 ### Linux
 
@@ -169,8 +177,12 @@ Run the commands below in PowerShell. No administrator rights are needed.
    the toolbar icon) and click **Quick**. The first run on a repo asks you to allow it (see
    [Which repos Claude runs on](#which-repos-claude-runs-on)).
 
-**Updating:** run `git pull` in `~/gh-glossary`, then click the reload icon on the extension in
-`chrome://extensions`. The host restarts with it.
+**Updating:** when an update is ready, the toolbar icon shows **↑**. Click **Update now** in the
+popup (or **Update gh-glossary now** in the icon's right-click menu): the extension updates
+`~/gh-glossary` and reloads itself, and the host restarts with it. It checks at most once a day, and only
+when you use the extension. It updates only a clean `main` (no uncommitted changes); on another
+branch it offers nothing. By hand: run `git pull` in `~/gh-glossary`, then click the reload icon on the
+extension in `chrome://extensions`.
 
 ### Extension ID
 
