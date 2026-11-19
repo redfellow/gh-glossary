@@ -161,6 +161,8 @@ test('Readers see the name GitHub Glossary; the tab stays inside the window (ope
   assert.equal(manifest.action.default_title, 'GitHub Glossary');
   assert.ok(!/<span class="title">gh-glossary</.test(popup) && popup.includes('<span class="title">GitHub Glossary</span>'), 'popup heading');
   assert.match(bg, /title: 'Define “%s” with GitHub Glossary'/);
+  assert.ok(!/gh-glossary now|`gh-glossary:|'gh-glossary'/.test(bg), 'update menu and icon title');
+  assert.ok(!/gh-glossary (update|is up to date)|Updated gh-glossary/.test(popup), 'update line in the popup');
   assert.match(read('options.html'), /<h1>GitHub Glossary<\/h1>/);
   assert.match(content, /title="GitHub Glossary definition"/);
   assert.ok(!/innerHeight - 90\b/.test(content), 'the tab is clamped by its real height');

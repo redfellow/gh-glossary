@@ -126,8 +126,11 @@ Claude**, the Claude desktop app. The steps below are for Debian and Ubuntu.
 
 ### Updating and removing
 
-- **Update:** run `git pull` in the `gh-glossary` folder, then click the reload icon on the extension
-  in `chrome://extensions`.
+- **Update:** when an update is ready, the toolbar icon shows **↑**. Click **Update now** in the popup,
+  or **Update GitHub Glossary now** in the icon's right-click menu. The extension updates the
+  `gh-glossary` folder and reloads itself. It checks at most once a day, and only updates a `main`
+  branch with no changes of your own. To update by hand, run `git pull` in the `gh-glossary` folder,
+  then click the reload icon on the extension in `chrome://extensions`.
 - **Check or remove the browser connection:** run the install script with `status` or `uninstall`.
   Run it again (with no argument) if you move node, gh, git or claude.
 
@@ -219,6 +222,9 @@ Claude instructions. GitHub Glossary is built so that such text cannot make Clau
 
   With **Off**, an unmerged pull request from a fork can change definitions shown on every page of the
   repository.
+- **Updates come only from you.** Only **Update now** in the popup or the toolbar icon's menu can
+  install an update, never a web page. It updates only a clean `main` from the repository you cloned, never
+  while a run is going, and does not involve Claude.
 - **No open port, no token.** The browser starts the local part directly, and only this extension may
   talk to it.
 

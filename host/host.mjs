@@ -13,6 +13,8 @@
 //   GET  /api/dir?path=<absolute folder>                              -> { ok } (for Send to Claude)
 //   GET  /api/allowlist | POST /api/disallow { scope, name }          -> { owners, repos } (options page)
 //   POST /api/outside { mode: 'off'|'limit-writes'|'outside-pages' }  -> { mode } (the popup only)
+//   GET  /api/update                                  -> { state, ... } (the service worker only)
+//   POST /api/update  { to: <commit> }                -> { updated, from, to, reinstall } (the service worker only)
 // Page keys: pr-<n>, issue-<n>, discussion-<n>, file:<path>, readme.
 // Reading stored glossaries works for any repo; starting a Claude run needs the repo or its owner on
 // the allowlist (config.json "allow"), which only the extension's own allow prompt adds to.
@@ -30,6 +32,7 @@ import { validRepo, validPage, validRef, isAllowed, lc, selectKey } from './rule
 import { guardRan } from './guard.mjs';
 import { readJson, writeJson, mergedGlossary, storeTerms, glossaryForRun, defineWith } from './store.mjs';
 import { resolveCommand, hookCommand, stopTree, folderName, samePath, readRule, managedSettingsFiles, hooksOffReason } from './platform.mjs';
+import { updateStatus, applyUpdate } from './update.mjs';
 import { OUTSIDE_MODES, configFrom, budgetFor, claudeArgs, parseResult, resultProblem, pageTarget, runPrompt, pageForRun, prOutside, openerOutside, refOutside, limitedRun, cutNote } from './run.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -356,6 +359,8 @@ async function pageOf({ repo, page, blob, ref }) {
   return { page, ref: ref || null };
 }
 
+const selfGit = (args) => run('git', ['-C', ROOT, ...args], { timeoutMs: 60_000 });
+
 const ownerAllowed = (repo) => config.allow.owners.some((o) => lc(o) === lc(repo.split('/')[0]));
 const notAllowed = (repo) => ({ code: 403, body: { error: `${repo} is not on the allowlist`, notAllowed: true } });
 
@@ -401,6 +406,15 @@ export async function handle({ method, path: p, query = {}, body = {} }) {
     saveConfig({ outside: config.outside });
     hostLog(`outside mode set to ${config.outside}`);
     return { code: 200, body: { mode: config.outside } };
+  }
+  // Updating gh-glossary itself (host/update.mjs): asked for by the service worker only, never passed
+  // on for a page. Not during a run, which the reload after an update would stop.
+  if (method === 'GET' && p === '/api/update') return { code: 200, body: await updateStatus(selfGit) };
+  if (method === 'POST' && p === '/api/update') {
+    if ([...jobs.values()].some((j) => j.state === 'queued' || j.state === 'running')) return { code: 409, body: { error: 'A run is in progress: update when it has finished.', busy: true } };
+    const r = await applyUpdate(selfGit, body.to);
+    if (r.body.updated) hostLog(`updated from ${r.body.from} to ${r.body.to}`);
+    return r;
   }
   if (method === 'POST' && p === '/api/define') {
     if (!validRepo(body.repo)) return { code: 400, body: { error: 'bad repo' } };

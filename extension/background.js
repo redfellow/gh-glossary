@@ -97,11 +97,56 @@ async function answerAsk(id, scope) {
   else a.cancelled?.();
   return r;
 }
-// Closing the popup that showed the question cancels it.
+// Closing the popup that showed the question cancels it. Opening it is also when updates are checked.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'popup' || port.sender?.id !== chrome.runtime.id || !port.sender?.url?.startsWith(chrome.runtime.getURL('popup.html'))) return;
+  updateInfo().catch(() => {});
   port.onDisconnect.addListener(() => { if (asking?.shown) dropAsk(); });
 });
+
+// ---------- updating gh-glossary itself (openspec/specs/self-update) ----------
+// Checked only when the reader uses the extension (the popup opens, or a Define from the context
+// menu), at most once a day. The host offers an update only on a clean main that differs from
+// origin/main; then the toolbar icon gets a badge, the popup a line, and the icon's menu an item.
+const DAY = 24 * 3600_000;
+let checking = null;
+async function updateInfo({ force = false } = {}) {
+  const { update = null } = await chrome.storage.local.get('update');
+  if (!force && update && Date.now() - update.checkedAt < DAY) return update;
+  checking ||= (async () => {
+    const r = await call('GET', '/api/update');
+    if (r.code !== 200) return update; // the host is down: check again next time
+    const u = { ...r.body, checkedAt: Date.now() };
+    await chrome.storage.local.set({ update: u });
+    showUpdate(u);
+    return u;
+  })().finally(() => { checking = null; });
+  return checking;
+}
+function showUpdate(u) {
+  const on = u?.state === 'available';
+  chrome.action.setBadgeText({ text: on ? '↑' : '' }).catch(() => {});
+  if (on) chrome.action.setBadgeBackgroundColor({ color: '#1f6feb' }).catch(() => {});
+  chrome.action.setTitle({ title: on ? `GitHub Glossary: an update is ready (${u.count} new)` : 'GitHub Glossary' }).catch(() => {});
+  chrome.contextMenus.update('ghl-update', { visible: on, title: on ? `Update GitHub Glossary now (${u.count} new)` : 'Update GitHub Glossary now' }, () => void chrome.runtime.lastError);
+}
+// Moves main to the commit last checked, then reloads the extension, which restarts the host on the
+// new code. What happened is kept for the popup to say after the reload.
+async function runUpdate() {
+  const { update = null } = await chrome.storage.local.get('update');
+  if (update?.state !== 'available') return { code: 409, body: { error: 'There is no update to install.' } };
+  const r = await call('POST', '/api/update', { body: { to: update.to } });
+  if (r.code !== 200) {
+    if (r.body?.stale || r.body?.state) await updateInfo({ force: true });
+    return r;
+  }
+  const done = { state: 'current', head: r.body.to, checkedAt: Date.now() };
+  await chrome.storage.local.set({ update: done, updated: { at: Date.now(), count: update.count, reinstall: r.body.reinstall } });
+  showUpdate(done);
+  if (r.body.updated) setTimeout(() => chrome.runtime.reload(), 300); // after the reply has gone
+  return r;
+}
+chrome.storage.local.get('update').then(({ update }) => showUpdate(update)).catch(() => {});
 
 const sameQuery = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // The page a popup asks for must be the one its tab shows.
@@ -159,6 +204,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       return { code: 200, body: { ask: askView(asking) } };
     }
     if (msg?.type === 'allow-answer' && fromPopup(sender)) return answerAsk(msg.id, msg.scope);
+    if (msg?.type === 'update-status' && fromPopup(sender)) {
+      const { updated = null, updateError = null } = await chrome.storage.local.get(['updated', 'updateError']);
+      await chrome.storage.local.remove(['updated', 'updateError']);
+      return { code: 200, body: { update: await updateInfo(), updated, updateError } };
+    }
+    if (msg?.type === 'update-apply' && fromPopup(sender)) return runUpdate();
     // How outside pages are treated is the reader's choice, made in the popup like an allow.
     if (msg?.type === 'set-outside' && fromPopup(sender)) return call('POST', '/api/outside', { body: { mode: msg.mode } });
     // The content script's tab click: only the reader's own click reaches here (the content script
@@ -181,10 +232,24 @@ const shorten = (t, n = 28) => t.length > n ? t.slice(0, n - 1) + '…' : t;
 function setupMenu() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: 'ghl-define', title: 'Define “%s” with GitHub Glossary', contexts: ['selection'], documentUrlPatterns: ['https://github.com/*'] });
+    chrome.contextMenus.create({ id: 'ghl-update', title: 'Update GitHub Glossary now', contexts: ['action'], visible: false }, () => {
+      void chrome.runtime.lastError;
+      chrome.storage.local.get('update').then(({ update }) => showUpdate(update)).catch(() => {});
+    });
   });
 }
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'ghl-update') {
+    // A refusal is shown in the popup, which opens for it.
+    const r = await runUpdate();
+    if (r.code !== 200) {
+      await chrome.storage.local.set({ updateError: r.body?.error || `error ${r.code}` });
+      chrome.action.openPopup().catch(() => {});
+    }
+    return;
+  }
   if (info.menuItemId !== 'ghl-define' || !tab?.id || info.frameId) return;
+  updateInfo().catch(() => {});
   // Shown beside the tab as well as in its tooltip: a Define that starts nothing must say why.
   const note = (text, tone) => chrome.tabs.sendMessage(tab.id, { type: 'note', text, tone, toast: true }).catch(() => {});
   let s;
