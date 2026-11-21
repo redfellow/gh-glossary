@@ -9,7 +9,7 @@
 
 - [x] 2.1 Add `host/install.ps1` and `host/install.cmd` (install, uninstall, status under HKCU for Chrome, Edge, Brave, Chromium); ignore the launcher and manifest; keep `.cmd` and `.ps1` in CRLF
 - [x] 2.2 On Windows (CI `windows-install` job, `.github/scripts/windows-check.mjs`): `host\install.cmd` registers for Chrome and Edge with a BOM-free manifest; the host answers `/api/health` and `/api/dir` through `launcher.cmd` started by `cmd.exe`; the guard hook allows a read in the root and refuses `C:\Windows\win.ini` and another drive under Git Bash; `claude --version` starts through `resolveCommand` for the npm install (shim followed to `bin\claude.exe`) and the native install; `status` lists, `uninstall` removes; `npm test` passes on Windows, macOS and Linux
-- [ ] 2.3 On a Windows desktop with a signed-in `claude`: load the extension and run Quick on one allowed page (being tested on a Windows desktop)
+- [x] 2.3 On a Windows desktop with a signed-in `claude`: load the extension and run Quick on one allowed page (confirmed working on a Windows desktop)
 
 ## 3. Extension and docs
 
